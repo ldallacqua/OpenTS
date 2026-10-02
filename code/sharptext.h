@@ -11,7 +11,10 @@
 
 #include "rect.h"
 
+#include <vector>
+
 class ConvertClass;
+class ShapeSet;
 class Surface;
 class WWFontClass;
 
@@ -31,3 +34,7 @@ Point2D Sharp_Text_Print(WWFontClass const & font, char const * string, Surface 
 void Sharp_Text_Hide(Surface & source, Rect const & sourcerect);
 void Sharp_Text_Show(Surface & source, Rect const & sourcerect, Surface & dest, Rect const & destclip, Point2D const & destorigin, int scale, bool draw);
 void Sharp_Text_Forget(void);
+void Sharp_Text_Forget(Surface const & surface);
+void Sharp_Text_Copy(Surface const & source, Rect const & sourcerect, Surface & dest, Rect const & destrect);
+void Sharp_Text_Draw_Glyph(Surface & surface, ConvertClass & converter, ShapeSet const & shapes, int frame, int finalframe, char32_t code, Point2D const & point);
+bool Sharp_Text_Menu_Frame(Surface & source, std::vector<unsigned short> & pixels, int & width, int & height);

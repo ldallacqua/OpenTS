@@ -16,6 +16,8 @@ Skirmish and network matches end at this screen instead of the campaign score sc
 
 Click, or press Space or Escape, to close the screen. If the launch file enables [multiplayer movies](/systems/multiplayer-movies/), the map's win or lose movie then plays. After that, a match started from the game's menu returns to the menu, and a match [a client launched](/formats/spawn-ini/) exits the game.
 
+With `BitmapGameFont=no`, enlarged score text uses the [scalable font policy](/using/scalable-text/) while retaining its colors, spacing, and animation.
+
 ## Who is listed
 
 The screen has one row for each house that played. Houses whose country sets [`MultiplayPassive=yes`](/keys/multiplaypassive/) are left out, and so are [observers](/systems/observers/). Defeated players keep their rows, so a four-player match always ends with four rows.

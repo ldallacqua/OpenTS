@@ -68,6 +68,7 @@
 #include "msgloop.h"
 #include "scenario.h"
 #include "session.h"
+#include "sharptext.h"
 #include "shapeset.h"
 #include "surface.h"
 #include "theme.h"
@@ -1320,7 +1321,7 @@ void ScoreFontClass::Print_Char(Surface *surf, char32_t code, int x, int y, int 
 				AudioEngine.Play_Sample(snd, AUDIO_GROUP_SFX, 128.0f / 255.0f, 255);
 			}
 		}
-		Draw_Shape(*surf, *Drawer, ShapePtr, frame + v, Point2D(x - ShapePtr->Get_Rect(frame + 2).X, y), surf->Get_Rect(), SHAPE_WIN_REL);
+		Sharp_Text_Draw_Glyph(*surf, *Drawer, *ShapePtr, frame + v, frame + 2, code, Point2D(x - ShapePtr->Get_Rect(frame + 2).X, y));
 	}
 }
 
@@ -1338,7 +1339,7 @@ void ScoreFontClass::Print_String(Surface *surf, const char * string, int x, int
 		if (code != 32) {
 			int frame = Glyph_Frame(code);
 
-			Draw_Shape(*surf, *Drawer, ShapePtr, frame + brightness_frame, Point2D(x - ShapePtr->Get_Rect(frame + 2).X, y), surf->Get_Rect(), SHAPE_WIN_REL);
+			Sharp_Text_Draw_Glyph(*surf, *Drawer, *ShapePtr, frame + brightness_frame, frame + 2, code, Point2D(x - ShapePtr->Get_Rect(frame + 2).X, y));
 		}
 		x += Char_Width(code) + 1;
 	}

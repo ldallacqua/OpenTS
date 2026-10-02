@@ -1743,6 +1743,36 @@ registered_commands:
     source: code/init.cpp
     class: QuickLoadCommandClass
     guard: null
+- id: ZoomIn
+  route_id: zoomin
+  kind: registered
+  title: Zoom In
+  description: Shows the battlefield one step larger.
+  category: Interface
+  audience: player
+  availability:
+    builds:
+    - release
+    - debug
+  _provenance:
+    source: code/init.cpp
+    class: ZoomInCommandClass
+    guard: null
+- id: ZoomOut
+  route_id: zoomout
+  kind: registered
+  title: Zoom Out
+  description: Shows the battlefield one step smaller.
+  category: Interface
+  audience: player
+  availability:
+    builds:
+    - release
+    - debug
+  _provenance:
+    source: code/init.cpp
+    class: ZoomOutCommandClass
+    guard: null
 - id: ChatToAll
   route_id: chattoall
   kind: registered

@@ -13,30 +13,26 @@
 
 #include "_surface.h"
 #include "convert.h"
+#include "draw.h"
+#include "dsurface.h"
 #include "globals.h"
 #include "goptions.h"
 #include "interfacescale.h"
 #include "scaledface.h"
+#include "shapeset.h"
 #include "surface.h"
 #include "utf8.h"
 #include "wwfont.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 
-/*
- * A match draws the battlefield and the sidebar at their artwork's size and enlarges each
- * onto the frame. Text printed on either is remembered here, with the pixels under it from
- * before and after the print. While a surface still holds a text's pixels when it is
- * enlarged, the pixels from before the print are enlarged in their place and the text is
- * drawn over them in the scalable face, at the frame's resolution. Where something has
- * since been drawn over a text, the surface's pixels are enlarged as they are and the
- * scalable face is left out. A text with less than half its letters' pixels left is
- * forgotten, and shows as whatever the surface holds.
- */
+// Keep the software surfaces intact because later animations restore their bitmap pixels.
 
 // The smallest size a line is drawn at when it has to shrink to fit the bitmap line's width.
 static const int SMALLEST_SIZE = 6;
@@ -49,21 +45,25 @@ struct TextLine
 	int X;
 	int Y;
 	int Width;
+	int Height;
 };
 
 struct TextRecord
 {
+	char32_t GlyphCode = 0;
+	Rect GlyphRect;
+	std::vector<unsigned short> GlyphColors;
 	Rect Bounds;
 	Rect Clip;
 	std::vector<TextLine> Lines;
-	WWFontClass::LetterShape Shape;
-	SharpTextAlign Align;
+	WWFontClass::LetterShape Shape = {};
+	SharpTextAlign Align = SHARP_TEXT_LEFT;
 
-	unsigned short Color;
-	unsigned short DropColor;
-	unsigned short EdgeColor;
-	bool HasDrop;
-	bool HasEdge;
+	unsigned short Color = 0;
+	unsigned short DropColor = 0;
+	unsigned short EdgeColor = 0;
+	bool HasDrop = false;
+	bool HasEdge = false;
 
 	std::vector<unsigned short> Clean;
 	std::vector<unsigned short> After;
@@ -73,12 +73,13 @@ struct TextRecord
 	std::vector<unsigned short> Held;
 	std::vector<unsigned char> Covered;
 	std::vector<unsigned char> Blocked;
-	bool IsCovered;
-	bool IsHidden;
+	bool IsCovered = false;
+	bool IsHidden = false;
 };
 
 static std::vector<TextRecord> _CompositeRecords;
 static std::vector<TextRecord> _SidebarRecords;
+static std::unordered_map<Surface const *, std::vector<TextRecord>> _MenuRecords;
 static SharpTextAlign _Align = SHARP_TEXT_LEFT;
 
 // Set while this module prints through the bitmap font, so that print is not remembered.
@@ -87,6 +88,9 @@ static bool _Printing = false;
 
 static std::vector<TextRecord> * Records_For(Surface const & surface)
 {
+	if (Frame_Scale() > 1) {
+		return(&_MenuRecords[&surface]);
+	}
 	if (&surface == CompositeSurface) {
 		return(&_CompositeRecords);
 	}
@@ -229,16 +233,14 @@ static void Take_Off(Surface & surface, TextRecord const & record)
 }
 
 
-/// <returns>bool; Is text printed on this surface now remembered and drawn again in the
-/// scalable face? It is only for the composite and sidebar surfaces of a match, while the
-/// surface is enlarged, BitmapGameFont is off and a scalable face could be read.</returns>
+/// <returns>Whether enlarged text on this surface can use the scalable face.</returns>
 bool Sharp_Text_Wanted(Surface const & surface)
 {
-	if (_Printing || Options.BitmapGameFont || !Layout_Scaling_Active() || surface.Bytes_Per_Pixel() != 2) {
+	if (_Printing || Options.BitmapGameFont || surface.Bytes_Per_Pixel() != 2) {
 		return(false);
 	}
 
-	bool enlarged = (&surface == CompositeSurface && View_Zoom() > 1) || (&surface == SidebarSurface && Sidebar_Scale() > 1);
+	bool enlarged = Frame_Scale() > 1 || (&surface == CompositeSurface && View_Zoom() > 1) || (&surface == SidebarSurface && Sidebar_Scale() > 1);
 	return(enlarged && Scaled_Face_Ready());
 }
 
@@ -254,8 +256,7 @@ void Sharp_Text_Set_Alignment(SharpTextAlign align)
 
 
 /// <summary>
-/// Prints through the bitmap font, as WWFontClass::Print does, and remembers the text so it
-/// can be drawn in the scalable face when the surface is enlarged.
+/// Records a bitmap print for scalable rendering when its surface is enlarged.
 /// </summary>
 /// <returns>Where the next print should begin to continue this one.</returns>
 Point2D Sharp_Text_Print(WWFontClass const & font, char const * string, Surface & surface, Rect const & cliprect, Point2D const & point, ConvertClass const & converter, unsigned char const * remap)
@@ -282,6 +283,7 @@ Point2D Sharp_Text_Print(WWFontClass const & font, char const * string, Surface 
 		line.X = start.X;
 		line.Y = start.Y;
 		line.Width = 0;
+		line.Height = advance;
 
 		Rect bounds;
 		char const * text = string;
@@ -449,6 +451,63 @@ static void Draw_Line(TextCanvas const & canvas, char const * text, int size, in
 }
 
 
+static void Draw_Shape_Record(TextCanvas const & canvas, TextRecord const & record, Rect const & sourcerect, Point2D const & destorigin, int scale)
+{
+	int first = 0;
+	int last = (int)record.GlyphColors.size() - 1;
+	while (first <= last && record.GlyphColors[first] == 0) first++;
+	while (last >= first && record.GlyphColors[last] == 0) last--;
+	if (first > last) return;
+
+	int height = (last - first + 1) * scale;
+	ScaledGlyph const * glyph = Scaled_Face_Glyph(record.GlyphCode, Scaled_Face_Size_For_Capital(height));
+	if (glyph == nullptr || glyph->Width <= 0 || glyph->Height <= 0) return;
+	int width = std::max((record.GlyphRect.Width - 1) * scale, 1);
+	int left = destorigin.X + (record.GlyphRect.X - sourcerect.X) * scale;
+	int top = destorigin.Y + (record.GlyphRect.Y + first - sourcerect.Y) * scale;
+	int edge = std::max(scale / 3, 1);
+	Rect area = Intersect(canvas.Clip, Rect(left - edge, top - edge, width + edge * 2, height + edge * 2));
+
+	auto coverage = [glyph, width, height](int x, int y) -> int {
+		if (x < 0 || y < 0 || x >= width || y >= height) return 0;
+		float sx = (x + 0.5f) * glyph->Width / width - 0.5f;
+		float sy = (y + 0.5f) * glyph->Height / height - 0.5f;
+		int x0 = (int)std::floor(sx);
+		int y0 = (int)std::floor(sy);
+		float fx = sx - x0;
+		float fy = sy - y0;
+		auto at = [glyph](int gx, int gy) -> int {
+			if (gx < 0 || gy < 0 || gx >= glyph->Width || gy >= glyph->Height) return 0;
+			return glyph->Coverage[(std::size_t)gy * glyph->Width + gx];
+		};
+		return (int)((at(x0, y0) * (1 - fx) + at(x0 + 1, y0) * fx) * (1 - fy) + (at(x0, y0 + 1) * (1 - fx) + at(x0 + 1, y0 + 1) * fx) * fy);
+	};
+
+	for (int y = area.Y; y < area.Y + area.Height; y++) {
+		unsigned short * out = (unsigned short *)(canvas.Buffer + (std::ptrdiff_t)y * canvas.Stride);
+		for (int x = area.X; x < area.X + area.Width; x++) {
+			if (record.IsCovered && Is_Blocked(canvas, x, y)) continue;
+			int alpha = coverage(x - left, y - top);
+			int outline = alpha;
+			for (int dy = -edge; dy <= edge; dy++) {
+				for (int dx = -edge; dx <= edge; dx++) {
+					outline = std::max(outline, coverage(x - left + dx, y - top + dy));
+				}
+			}
+			int under = out[x];
+			int red = (under >> 11) * (255 - outline) / 255;
+			int green = ((under >> 5) & 63) * (255 - outline) / 255;
+			int blue = (under & 31) * (255 - outline) / 255;
+			unsigned short color = record.GlyphColors[std::clamp((y - top) / scale + first, first, last)];
+			red += (color >> 11) * alpha / 255;
+			green += ((color >> 5) & 63) * alpha / 255;
+			blue += (color & 31) * alpha / 255;
+			out[x] = (unsigned short)((red << 11) | (green << 5) | blue);
+		}
+	}
+}
+
+
 static void Draw_Record(TextRecord const & record, Rect const & sourcerect, unsigned char * buffer, int stride, Rect const & destclip, Point2D const & destorigin, int scale)
 {
 	Rect shown = Intersect(record.Clip, sourcerect);
@@ -465,6 +524,11 @@ static void Draw_Record(TextRecord const & record, Rect const & sourcerect, unsi
 	canvas.Origin = Point2D(destorigin.X + (record.Bounds.X - sourcerect.X) * scale, destorigin.Y + (record.Bounds.Y - sourcerect.Y) * scale);
 	canvas.Scale = scale;
 
+	if (record.GlyphCode != 0) {
+		Draw_Shape_Record(canvas, record, sourcerect, destorigin, scale);
+		return;
+	}
+
 	int wanted = Scaled_Face_Size_For_Capital((record.Shape.Bottom - record.Shape.Top + 1) * scale);
 	int drop = std::max((scale + 1) / 2, 1);
 	int edge = std::max(scale / 2, 1);
@@ -479,6 +543,26 @@ static void Draw_Record(TextRecord const & record, Rect const & sourcerect, unsi
 			width = Scaled_Face_String_Width(line.Text.c_str(), size);
 		}
 
+		int ascent = 0;
+		int descent = 0;
+		int above = record.HasEdge ? edge : 0;
+		int below = std::max(above, record.HasDrop ? drop : 0);
+		for (;;) {
+			ascent = descent = 0;
+			char const * cursor = line.Text.c_str();
+			while (*cursor != '\0') {
+				ScaledGlyph const * glyph = Scaled_Face_Glyph(UTF8::Decode(cursor), size);
+				if (glyph != nullptr) {
+					ascent = std::max(ascent, glyph->Top);
+					descent = std::max(descent, glyph->Height - glyph->Top);
+				}
+			}
+			if (ascent + descent + above + below <= line.Height * scale || size <= SMALLEST_SIZE) {
+				break;
+			}
+			size--;
+		}
+		width = Scaled_Face_String_Width(line.Text.c_str(), size);
 		int x = destorigin.X + (line.X - sourcerect.X) * scale;
 		if (record.Align == SHARP_TEXT_CENTER) {
 			x += (room - width) / 2;
@@ -487,7 +571,13 @@ static void Draw_Record(TextRecord const & record, Rect const & sourcerect, unsi
 		} else {
 			x += record.Shape.Left * scale;
 		}
-		int baseline = destorigin.Y + (line.Y + record.Shape.Bottom + 1 - sourcerect.Y) * scale;
+		int top = destorigin.Y + (line.Y - sourcerect.Y) * scale;
+		int baseline = top + (record.Shape.Bottom + 1) * scale;
+		int low = top + ascent + above;
+		int high = top + line.Height * scale - descent - below;
+		if (low <= high) {
+			baseline = std::clamp(baseline, low, high);
+		}
 
 		if (record.HasEdge) {
 			for (int down = -edge; down <= edge; down++) {
@@ -596,4 +686,201 @@ void Sharp_Text_Forget(void)
 {
 	_CompositeRecords.clear();
 	_SidebarRecords.clear();
+	_MenuRecords.clear();
+}
+
+
+/// <summary>Removes records belonging to a surface being destroyed.</summary>
+void Sharp_Text_Forget(Surface const & surface)
+{
+	_MenuRecords.erase(&surface);
+}
+
+
+/// <summary>Carries recorded text through an opaque copy without changing its pixels.</summary>
+void Sharp_Text_Copy(Surface const & source, Rect const & sourcerect, Surface & dest, Rect const & destrect)
+{
+	if (_Printing || Frame_Scale() <= 1 || Options.BitmapGameFont || &source == &dest) {
+		return;
+	}
+	if (sourcerect.Width != destrect.Width || sourcerect.Height != destrect.Height) {
+		return;
+	}
+
+	int dx = destrect.X - sourcerect.X;
+	int dy = destrect.Y - sourcerect.Y;
+	Rect copied = Intersect(sourcerect, source.Get_Rect());
+	Rect available = dest.Get_Rect();
+	available.X -= dx;
+	available.Y -= dy;
+	copied = Intersect(copied, available);
+	Rect damaged(copied.X + dx, copied.Y + dy, copied.Width, copied.Height);
+
+	std::vector<TextRecord> additions;
+	auto found = _MenuRecords.find(&source);
+	if (found != _MenuRecords.end()) {
+		for (TextRecord const & original : found->second) {
+			Rect part = Intersect(original.Bounds, copied);
+			if (!part.Is_Valid()) {
+				continue;
+			}
+			TextRecord record = original;
+			record.Clean.resize((std::size_t)part.Width * part.Height);
+			record.After.resize(record.Clean.size());
+			for (int y = 0; y < part.Height; y++) {
+				std::size_t offset = (std::size_t)(part.Y - original.Bounds.Y + y) * original.Bounds.Width + part.X - original.Bounds.X;
+				std::copy_n(original.Clean.data() + offset, part.Width, record.Clean.data() + (std::size_t)y * part.Width);
+				std::copy_n(original.After.data() + offset, part.Width, record.After.data() + (std::size_t)y * part.Width);
+			}
+			record.Bounds = Rect(part.X + dx, part.Y + dy, part.Width, part.Height);
+			record.Clip = Intersect(original.Clip, copied);
+			record.Clip.X += dx;
+			record.Clip.Y += dy;
+			record.GlyphRect.X += dx;
+			record.GlyphRect.Y += dy;
+			for (TextLine & line : record.Lines) {
+				line.X += dx;
+				line.Y += dy;
+			}
+			record.IsHidden = false;
+			additions.push_back(std::move(record));
+		}
+	}
+
+	if (additions.empty() && _MenuRecords.find(&dest) == _MenuRecords.end()) {
+		return;
+	}
+	auto & records = _MenuRecords[&dest];
+	std::erase_if(records, [&damaged](TextRecord const & record) { return Intersect(record.Bounds, damaged) == record.Bounds; });
+	for (TextRecord & record : additions) {
+		records.push_back(std::move(record));
+	}
+}
+
+
+/// <summary>Records a score glyph, including the bounds of its fade frames.</summary>
+void Sharp_Text_Draw_Glyph(Surface & surface, ConvertClass & converter, ShapeSet const & shapes, int frame, int finalframe, char32_t code, Point2D const & point)
+{
+	Rect glyphrect = shapes.Get_Rect(frame);
+	glyphrect.X += point.X;
+	glyphrect.Y += point.Y;
+	Rect extent;
+	for (int fade = finalframe - 2; fade <= finalframe; fade++) {
+		Rect area = shapes.Get_Rect(fade);
+		area.X += point.X;
+		area.Y += point.Y;
+		extent = Union(extent, area);
+	}
+	Rect bounds = Intersect(extent, surface.Get_Rect());
+	bool wanted = Sharp_Text_Wanted(surface) && Frame_Scale() > 1 && bounds.Is_Valid();
+	TextRecord record;
+	if (wanted) {
+		record.Bounds = bounds;
+		record.Clip = surface.Get_Rect();
+		record.GlyphRect = glyphrect;
+		record.GlyphCode = code;
+		record.IsHidden = false;
+		record.IsCovered = false;
+		auto & records = *Records_For(surface);
+		wanted = Copy_Out(surface, bounds, record.Clean);
+		if (wanted) {
+			// Neighboring glow frames overlap; every glyph keeps the background without text.
+			for (auto other = records.rbegin(); other != records.rend(); ++other) {
+				if (other->GlyphCode == 0) continue;
+				Rect shared = Intersect(bounds, other->Bounds);
+				for (int y = shared.Y; y < shared.Y + shared.Height; y++) {
+					for (int x = shared.X; x < shared.X + shared.Width; x++) {
+						std::size_t pixel = (std::size_t)(y - bounds.Y) * bounds.Width + x - bounds.X;
+						std::size_t previous = (std::size_t)(y - other->Bounds.Y) * other->Bounds.Width + x - other->Bounds.X;
+						if (record.Clean[pixel] == other->After[previous]) {
+							record.Clean[pixel] = other->Clean[previous];
+						}
+					}
+				}
+			}
+		}
+		std::erase_if(records, [&bounds](TextRecord const & other) { return other.GlyphCode != 0 && other.Bounds == bounds; });
+	}
+
+	Draw_Shape(surface, converter, &shapes, frame, point, surface.Get_Rect(), SHAPE_WIN_REL);
+	if (!wanted || !Copy_Out(surface, bounds, record.After) || record.After == record.Clean) {
+		return;
+	}
+
+	std::vector<unsigned short> sharedpixels;
+	for (TextRecord & other : *Records_For(surface)) {
+		if (other.GlyphCode == 0) continue;
+		Rect shared = Intersect(bounds, other.Bounds);
+		if (!shared.Is_Valid() || !Copy_Out(surface, shared, sharedpixels)) continue;
+		for (int y = 0; y < shared.Height; y++) {
+			std::size_t offset = (std::size_t)(shared.Y - other.Bounds.Y + y) * other.Bounds.Width + shared.X - other.Bounds.X;
+			std::copy_n(sharedpixels.data() + (std::size_t)y * shared.Width, shared.Width, other.After.data() + offset);
+		}
+	}
+
+	_Printing = true;
+	DSurface sample(glyphrect.Width, glyphrect.Height);
+	sample.Fill(0);
+	Rect rect = shapes.Get_Rect(frame);
+	Draw_Shape(sample, converter, &shapes, frame, Point2D(-rect.X, -rect.Y), sample.Get_Rect(), SHAPE_WIN_REL);
+	std::vector<unsigned short> colors;
+	bool sampled = Copy_Out(sample, sample.Get_Rect(), colors);
+	_Printing = false;
+	if (!sampled) {
+		return;
+	}
+	record.GlyphColors.resize(glyphrect.Height);
+	for (int y = 0; y < glyphrect.Height; y++) {
+		int brightest = 0;
+		for (int x = 0; x < glyphrect.Width; x++) {
+			unsigned short color = colors[(std::size_t)y * glyphrect.Width + x];
+			int light = (color >> 11) * 2 + ((color >> 5) & 63) * 3 + (color & 31);
+			if (light > brightest) {
+				brightest = light;
+				record.GlyphColors[y] = color;
+			}
+		}
+	}
+	Records_For(surface)->push_back(std::move(record));
+}
+
+
+/// <summary>Enlarges the menu art and draws its recorded text at the enlarged resolution.</summary>
+/// <returns>Whether the composed frame replaces the software surface for presentation.</returns>
+bool Sharp_Text_Menu_Frame(Surface & source, std::vector<unsigned short> & pixels, int & width, int & height)
+{
+	int scale = Frame_Scale();
+	if (scale <= 1 || Options.BitmapGameFont || !Scaled_Face_Ready()) {
+		return(false);
+	}
+	width = source.Get_Width() * scale;
+	height = source.Get_Height() * scale;
+	pixels.resize((std::size_t)width * height);
+	Rect rect = source.Get_Rect();
+	Sharp_Text_Hide(source, rect);
+	unsigned char const * from = (unsigned char const *)source.Lock();
+	if (from == nullptr) {
+		Sharp_Text_Show(source, rect, source, rect, Point2D(0, 0), 1, false);
+		return(false);
+	}
+	for (int y = 0; y < source.Get_Height(); y++) {
+		unsigned short const * row = (unsigned short const *)(from + (std::ptrdiff_t)y * source.Stride());
+		unsigned short * out = pixels.data() + (std::size_t)y * scale * width;
+		for (int x = 0; x < source.Get_Width(); x++) {
+			std::fill_n(out + x * scale, scale, row[x]);
+		}
+		for (int repeat = 1; repeat < scale; repeat++) {
+			std::copy_n(out, width, out + (std::size_t)repeat * width);
+		}
+	}
+	source.Unlock();
+	auto & records = *Records_For(source);
+	for (TextRecord & record : records) {
+		if (record.IsHidden) {
+			Copy_In(source, record.Bounds, record.Held);
+			record.IsHidden = false;
+			Draw_Record(record, rect, (unsigned char *)pixels.data(), width * 2, Rect(0, 0, width, height), Point2D(0, 0), scale);
+		}
+	}
+	return(true);
 }

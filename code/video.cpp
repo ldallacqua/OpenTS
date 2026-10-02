@@ -25,6 +25,7 @@
 #include "goptions.h"
 #include "misc.h"
 #include "sdl/sdlwindow.h"
+#include "sharptext.h"
 #include "surface.h"
 #include "ui/uishell.h"
 #include "videodirty.h"
@@ -64,6 +65,7 @@ static unsigned int _PresentSecondStart = 0;
 // A window that repaints itself can start a present inside the engine's own; the inner one is
 // skipped. A resize that arrives during a present waits for it to finish.
 static bool _Presenting = false;
+static bool _ComposingMenu = false;
 static bool _ResizePending = false;
 static int _PendingWidth = 0;
 static int _PendingHeight = 0;
@@ -294,7 +296,9 @@ void Video_Set_Refresh_Rate(int refreshrate)
 /// </summary>
 void Video_Mark_Dirty(void)
 {
-	_Dirty.Mark_Game();
+	if (!_ComposingMenu) {
+		_Dirty.Mark_Game();
+	}
 }
 
 
@@ -325,10 +329,26 @@ static void Present(void)
 		return;
 	}
 
+	static std::vector<unsigned short> menu;
+	int width = surface->Get_Width();
+	int height = surface->Get_Height();
+	int pitch = surface->Stride();
+	_ComposingMenu = true;
+	bool composed = snapshot.Upload && Sharp_Text_Menu_Frame(*surface, menu, width, height);
+	_ComposingMenu = false;
+	if (composed) {
+		pixels = menu.data();
+		pitch = width * 2;
+	}
+	if (snapshot.Upload && !Backend_Set_Frame_Size(width, height)) {
+		_Dirty.Restore(snapshot);
+		return;
+	}
+
 	_LastPresentTime = timeGetTime();
 
 	_Presenting = true;
-	bool presented = Backend_Present(pixels, surface->Stride(), _ScaleInfo.DestX, _ScaleInfo.DestY, _ScaleInfo.DestWidth, _ScaleInfo.DestHeight, Backend_Scale_Mode());
+	bool presented = Backend_Present(pixels, pitch, _ScaleInfo.DestX, _ScaleInfo.DestY, _ScaleInfo.DestWidth, _ScaleInfo.DestHeight, Backend_Scale_Mode());
 	if (presented) {
 		if (snapshot.Upload) {
 			_Dirty.Upload_Completed();

@@ -52,6 +52,7 @@
 #include "blit.h"
 #include "dbgprint.h"
 #include "misc.h"
+#include "sharptext.h"
 #include "video.h"
 
 #include <algorithm>
@@ -178,6 +179,7 @@ DSurface::DSurface(int width, int height) :
  *=============================================================================================*/
 DSurface::~DSurface(void)
 {
+	Sharp_Text_Forget(*this);
 	/*
 	 * GDI will not free a bitmap that is still selected into a context, so the one the
 	 * context started with has to go back first.
@@ -482,6 +484,13 @@ bool DSurface::Blit_From(Rect const & dcliprect, Rect const & destrect, Surface 
 	 */
 	if (trans || !ssource.Is_GDI_Backed() || samesize) {
 		bool result = BASECLASS::Blit_From(dcliprect, destrect, ssource, scliprect, sourcerect, trans, unknown);
+		if (result && !trans && samesize) {
+			Rect from = sourcerect;
+			Rect to = destrect;
+			if (Blit_Clip(to, dcliprect, from, scliprect)) {
+				Sharp_Text_Copy(ssource, from.Bias_To(scliprect), *this, to.Bias_To(dcliprect));
+			}
+		}
 		if (result && IsPrimary) {
 			Video_Mark_Dirty();
 		}

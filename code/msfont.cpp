@@ -25,6 +25,7 @@
 #include "goptions.h"
 #include "mixfile.h"
 #include "palette.h"
+#include "sharptext.h"
 #include "shapeset.h"
 #include "utf8.h"
 
@@ -357,7 +358,7 @@ void MSFont::Draw_Character(Surface * surface, char32_t code, int x, int y, int 
 			}
 		}
 
-		Draw_Shape(*surface, *Drawer, FontFile, shape_frame + frame, Point2D(x - FontFile->Get_Rect(shape_frame + 2).X, y), surface->Get_Rect(), SHAPE_WIN_REL);
+		Sharp_Text_Draw_Glyph(*surface, *Drawer, *FontFile, shape_frame + frame, shape_frame + 2, code, Point2D(x - FontFile->Get_Rect(shape_frame + 2).X, y));
 	}
 }
 
@@ -382,7 +383,7 @@ void MSFont::Draw_String(Surface * surface, char const * string, int x, int y, i
 			if (code > ' ') {
 				int shape_frame = Glyph_Frame(code);
 
-				Draw_Shape(*surface, *Drawer, FontFile, shape_frame + frame, Point2D(current_x - FontFile->Get_Rect(shape_frame + 2).X, y), surface->Get_Rect(), SHAPE_WIN_REL);
+				Sharp_Text_Draw_Glyph(*surface, *Drawer, *FontFile, shape_frame + frame, shape_frame + 2, code, Point2D(current_x - FontFile->Get_Rect(shape_frame + 2).X, y));
 			}
 
 			current_x += Get_Character_Width(code);

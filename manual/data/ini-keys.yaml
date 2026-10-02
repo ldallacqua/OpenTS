@@ -3066,6 +3066,42 @@ Biome:
       source: code/mapgen.cpp
       guard: null
     level: MapSeedClass
+BitmapDialogFont:
+  key: BitmapDialogFont
+  scopes:
+  - applies_to:
+    - client settings
+    file: sun.ini
+    section:
+      kind: literal
+      name: Options
+    value_type: boolean
+    status: generated
+    _provenance:
+      default_candidate: 'yes'
+      declared_in: OptionsClass
+      member: BitmapDialogFont
+      source: code/options.cpp
+      guard: null
+    level: OptionsClass
+BitmapGameFont:
+  key: BitmapGameFont
+  scopes:
+  - applies_to:
+    - client settings
+    file: sun.ini
+    section:
+      kind: literal
+      name: Options
+    value_type: boolean
+    status: generated
+    _provenance:
+      default_candidate: 'yes'
+      declared_in: OptionsClass
+      member: BitmapGameFont
+      source: code/options.cpp
+      guard: null
+    level: OptionsClass
 BitmapSystemFont:
   key: BitmapSystemFont
   scopes:
@@ -11623,6 +11659,24 @@ IntentionalDriftVelocity:
       source: code/levitate.cpp
       guard: null
     level: LevitateLocomotionClass
+InterfaceScale:
+  key: InterfaceScale
+  scopes:
+  - applies_to:
+    - client settings
+    file: sun.ini
+    section:
+      kind: literal
+      name: Video
+    value_type: integer
+    status: generated
+    _provenance:
+      default_candidate: '1'
+      declared_in: OptionsClass
+      member: InterfaceScale
+      source: code/options.cpp
+      guard: null
+    level: OptionsClass
 Intro:
   key: Intro
   scopes:
@@ -14166,6 +14220,39 @@ Medians:
       source: code/isotype.cpp
       guard: null
     level: IsometricTileTypeClass
+MenuScale:
+  key: MenuScale
+  scopes:
+  - applies_to:
+    - client settings
+    file: sun.ini
+    section:
+      kind: literal
+      name: Video
+    value_type: integer
+    status: needs_review
+    _provenance:
+      default_candidate: '1'
+      declared_in: OptionsClass
+      member: MenuScale
+      source: code/options.cpp
+      guard: null
+    level: OptionsClass
+  - applies_to:
+    - client settings
+    file: sun.ini
+    section:
+      kind: literal
+      name: Video
+    value_type: integer
+    status: needs_review
+    _provenance:
+      default_candidate: null
+      declared_in: Startup
+      member: Options
+      source: code/startup.cpp
+      guard: null
+    level: Startup
 MessageDelay:
   key: MessageDelay
   scopes:
@@ -25701,6 +25788,24 @@ VeteranSpeed:
       source: code/rules.cpp
       guard: null
     level: RulesClass
+ViewScale:
+  key: ViewScale
+  scopes:
+  - applies_to:
+    - client settings
+    file: sun.ini
+    section:
+      kind: literal
+      name: Video
+    value_type: integer
+    status: generated
+    _provenance:
+      default_candidate: '1'
+      declared_in: OptionsClass
+      member: ViewScale
+      source: code/options.cpp
+      guard: null
+    level: OptionsClass
 Visceroids:
   key: Visceroids
   scopes:
