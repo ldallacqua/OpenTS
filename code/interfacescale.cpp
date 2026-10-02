@@ -47,15 +47,58 @@ static int Largest_Scale(int wanted, int width, int height)
 }
 
 
+// With MenuScale at 0 the menu frame is the smallest that holds 640 by 400 in the shape of
+// the resolution, so the menu artwork reaches two opposite edges of the screen. The factor
+// it is enlarged by is then seldom whole.
+static double Menu_Fit_Factor(int width, int height)
+{
+	if (Options.MenuScale > 0) {
+		return(0.0);
+	}
+	return(std::max(std::min((double)width / MIN_FRAME_WIDTH, (double)height / MIN_FRAME_HEIGHT), 1.0));
+}
+
+
 /// <summary>
 /// Fetches how many times larger than their artwork the menus are shown at the given
 /// resolution.
 /// </summary>
 /// <returns>Returns with the MenuScale setting, lowered to the largest multiple that leaves
-/// the menu frame at least 640 by 400, and never less than one.</returns>
+/// the menu frame at least 640 by 400, and never less than one. With the setting at 0 it is
+/// the whole part of the factor that fits 640 by 400 to the resolution.</returns>
 int Menu_Scale_For(int width, int height)
 {
+	double fit = Menu_Fit_Factor(width, height);
+	if (fit > 0.0) {
+		return((int)fit);
+	}
 	return(Largest_Scale(Options.MenuScale, width, height));
+}
+
+
+/// <summary>
+/// Fetches the width of the frame the menus are drawn in at the given resolution.
+/// </summary>
+int Menu_Frame_Width_For(int width, int height)
+{
+	double fit = Menu_Fit_Factor(width, height);
+	if (fit > 0.0) {
+		return(std::max((int)((double)width / fit + 0.5), MIN_FRAME_WIDTH));
+	}
+	return(width / Menu_Scale_For(width, height));
+}
+
+
+/// <summary>
+/// Fetches the height of the frame the menus are drawn in at the given resolution.
+/// </summary>
+int Menu_Frame_Height_For(int width, int height)
+{
+	double fit = Menu_Fit_Factor(width, height);
+	if (fit > 0.0) {
+		return(std::max((int)((double)height / fit + 0.5), MIN_FRAME_HEIGHT));
+	}
+	return(height / Menu_Scale_For(width, height));
 }
 
 
@@ -105,7 +148,7 @@ int View_Scale(void)
 /// </summary>
 int Menu_Frame_Width(void)
 {
-	return(Options.ScreenWidth / Menu_Scale());
+	return(Menu_Frame_Width_For(Options.ScreenWidth, Options.ScreenHeight));
 }
 
 
@@ -114,7 +157,7 @@ int Menu_Frame_Width(void)
 /// </summary>
 int Menu_Frame_Height(void)
 {
-	return(Options.ScreenHeight / Menu_Scale());
+	return(Menu_Frame_Height_For(Options.ScreenWidth, Options.ScreenHeight));
 }
 
 

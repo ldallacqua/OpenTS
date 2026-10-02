@@ -24,6 +24,8 @@
 
 
 int Menu_Scale_For(int width, int height);
+int Menu_Frame_Width_For(int width, int height);
+int Menu_Frame_Height_For(int width, int height);
 int Menu_Scale(void);
 int Interface_Scale(void);
 int View_Scale(void);

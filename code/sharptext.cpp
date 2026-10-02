@@ -72,7 +72,7 @@ struct ShapeFont
 
 	// The size, the width and the spacing between letters, in 64ths of a pixel, that the
 	// scalable face stands in with at one enlargement.
-	int FitScale = 0;
+	float FitScale = 0.0f;
 	int FitSize = 0;
 	int FitWide = 0;
 	int FitSpacing = 0;
@@ -144,6 +144,14 @@ static SharpTextAlign _Align = SHARP_TEXT_LEFT;
 
 // Set while this module prints through the bitmap font, so that print is not remembered.
 static bool _Printing = false;
+
+
+// A length of the picture in pixels of the enlarged one. The menu frame is enlarged by a
+// factor that need not be whole.
+static int Enlarged(int length, float scale)
+{
+	return((int)std::lround((float)length * scale));
+}
 
 
 static std::vector<TextRecord> * Records_For(Surface const & surface)
@@ -459,7 +467,7 @@ struct TextCanvas
 	// destination pixels one of its pixels became.
 	TextRecord const * Record;
 	Point2D Origin;
-	int Scale;
+	float Scale;
 };
 
 
@@ -471,8 +479,8 @@ static bool Is_Blocked(TextCanvas const & canvas, int x, int y)
 		return(false);
 	}
 
-	int column = (x - canvas.Origin.X) / canvas.Scale;
-	int row = (y - canvas.Origin.Y) / canvas.Scale;
+	int column = (int)((float)(x - canvas.Origin.X) / canvas.Scale);
+	int row = (int)((float)(y - canvas.Origin.Y) / canvas.Scale);
 	return(column < bounds.Width && row < bounds.Height && canvas.Record->Blocked[(std::size_t)row * bounds.Width + column] != 0);
 }
 
@@ -536,13 +544,13 @@ static void Draw_Line(TextCanvas const & canvas, char const * text, int size, in
  * The face is widened or narrowed until the sample letters are as wide on average as the
  * set's, as far as the limits allow, and what is left over goes between the letters.
  */
-static void Fit_Shape_Font(ShapeFont & font, int scale)
+static void Fit_Shape_Font(ShapeFont & font, float scale)
 {
 	if (font.FitScale == scale) {
 		return;
 	}
 	font.FitScale = scale;
-	font.FitSize = Scaled_Face_Size_For_Capital(font.Rows * scale);
+	font.FitSize = Scaled_Face_Size_For_Capital(Enlarged(font.Rows, scale));
 	font.FitWide = font.FitSize;
 	font.FitSpacing = 0;
 
@@ -550,7 +558,7 @@ static void Fit_Shape_Font(ShapeFont & font, int scale)
 		ScaledGlyph const * glyph = Scaled_Face_Glyph(font.Lone, font.FitSize);
 		if (glyph != nullptr && glyph->Width > 0) {
 			// One bitmap pixel narrower than the bitmap character, which fills its cell.
-			int room = std::max(font.Width - 1, 1) * scale;
+			int room = Enlarged(std::max(font.Width - 1, 1), scale);
 			font.FitWide = std::clamp(font.FitSize * room / glyph->Width, font.FitSize * NARROWEST_LONE_SHARE / 100, font.FitSize * WIDEST_SHARE / 100);
 		}
 		return;
@@ -561,7 +569,7 @@ static void Fit_Shape_Font(ShapeFont & font, int scale)
 	for (std::pair<char32_t, int> const & cell : font.Cells) {
 		ScaledGlyph const * glyph = Scaled_Face_Glyph(cell.first, font.FitSize);
 		if (glyph != nullptr) {
-			cells += (long long)cell.second * scale * 64;
+			cells += std::lround((float)cell.second * scale * 64.0f);
 			designed += glyph->Advance;
 		}
 	}
@@ -576,7 +584,7 @@ static void Fit_Shape_Font(ShapeFont & font, int scale)
 	for (std::pair<char32_t, int> const & cell : font.Cells) {
 		ScaledGlyph const * glyph = Scaled_Face_Glyph(cell.first, font.FitSize, font.FitWide);
 		if (glyph != nullptr) {
-			cells += (long long)cell.second * scale * 64;
+			cells += std::lround((float)cell.second * scale * 64.0f);
 			fitted += glyph->Advance;
 			count++;
 		}
@@ -587,7 +595,7 @@ static void Fit_Shape_Font(ShapeFont & font, int scale)
 }
 
 
-static ScaledGlyph const * Shape_Glyph(TextRecord const & record, int scale, char32_t code)
+static ScaledGlyph const * Shape_Glyph(TextRecord const & record, float scale, char32_t code)
 {
 	if (record.Font == nullptr || record.Font->Rows <= 0) {
 		return(nullptr);
@@ -609,7 +617,7 @@ static bool Same_Line(TextRecord const & one, TextRecord const & other)
  * from the left edge of its first cell with the face's own spacing, so a letter stays in
  * place while more are typed after it.
  */
-static void Place_Shape_Words(std::vector<TextRecord> & records, int scale)
+static void Place_Shape_Words(std::vector<TextRecord> & records, float scale)
 {
 	for (TextRecord & record : records) {
 		record.Pen = UNPLACED;
@@ -640,13 +648,13 @@ static void Place_Shape_Words(std::vector<TextRecord> & records, int scale)
 
 		ScaledGlyph const * opening = Shape_Glyph(*first, scale, first->GlyphCode);
 		if (opening != nullptr) {
-			record.Pen = first->Body.X * scale - opening->Left + ((travelled + 32) >> 6);
+			record.Pen = Enlarged(first->Body.X, scale) - opening->Left + ((travelled + 32) >> 6);
 		}
 	}
 }
 
 
-static void Draw_Shape_Record(TextCanvas const & canvas, TextRecord const & record, Rect const & sourcerect, Point2D const & destorigin, int scale)
+static void Draw_Shape_Record(TextCanvas const & canvas, TextRecord const & record, Rect const & sourcerect, Point2D const & destorigin, float scale)
 {
 	if (record.CapRows <= 0) {
 		return;
@@ -657,15 +665,15 @@ static void Draw_Shape_Record(TextCanvas const & canvas, TextRecord const & reco
 		return;
 	}
 
-	int left = destorigin.X - sourcerect.X * scale;
+	int left = destorigin.X - Enlarged(sourcerect.X, scale);
 	if (record.Pen != UNPLACED) {
 		left += record.Pen + glyph->Left;
 	} else {
-		left += record.Body.X * scale + (record.Body.Width * scale - glyph->Width) / 2;
+		left += Enlarged(record.Body.X, scale) + (Enlarged(record.Body.Width, scale) - glyph->Width) / 2;
 	}
-	int top = destorigin.Y + (record.CapTop + record.CapRows - sourcerect.Y) * scale - glyph->Top;
+	int top = destorigin.Y + Enlarged(record.CapTop + record.CapRows - sourcerect.Y, scale) - glyph->Top;
 	unsigned short color = record.GlyphColor;
-	int edge = std::max(scale / 3, 1);
+	int edge = std::max((int)scale / 3, 1);
 	Rect area = Intersect(canvas.Clip, Rect(left - edge, top - edge, glyph->Width + edge * 2, glyph->Height + edge * 2));
 
 	auto coverage = [glyph](int x, int y) -> int {
@@ -703,10 +711,12 @@ static void Draw_Shape_Record(TextCanvas const & canvas, TextRecord const & reco
 }
 
 
-static void Draw_Record(TextRecord const & record, Rect const & sourcerect, unsigned char * buffer, int stride, Rect const & destclip, Point2D const & destorigin, int scale)
+static void Draw_Record(TextRecord const & record, Rect const & sourcerect, unsigned char * buffer, int stride, Rect const & destclip, Point2D const & destorigin, float scale)
 {
 	Rect shown = Intersect(record.Clip, sourcerect);
-	Rect clip = Intersect(destclip, Rect(destorigin.X + (shown.X - sourcerect.X) * scale, destorigin.Y + (shown.Y - sourcerect.Y) * scale, shown.Width * scale, shown.Height * scale));
+	int shownleft = Enlarged(shown.X - sourcerect.X, scale);
+	int showntop = Enlarged(shown.Y - sourcerect.Y, scale);
+	Rect clip = Intersect(destclip, Rect(destorigin.X + shownleft, destorigin.Y + showntop, Enlarged(shown.X + shown.Width - sourcerect.X, scale) - shownleft, Enlarged(shown.Y + shown.Height - sourcerect.Y, scale) - showntop));
 	if (!clip.Is_Valid()) {
 		return;
 	}
@@ -716,7 +726,7 @@ static void Draw_Record(TextRecord const & record, Rect const & sourcerect, unsi
 	canvas.Stride = stride;
 	canvas.Clip = clip;
 	canvas.Record = &record;
-	canvas.Origin = Point2D(destorigin.X + (record.Bounds.X - sourcerect.X) * scale, destorigin.Y + (record.Bounds.Y - sourcerect.Y) * scale);
+	canvas.Origin = Point2D(destorigin.X + Enlarged(record.Bounds.X - sourcerect.X, scale), destorigin.Y + Enlarged(record.Bounds.Y - sourcerect.Y, scale));
 	canvas.Scale = scale;
 
 	if (record.GlyphCode != 0) {
@@ -724,12 +734,12 @@ static void Draw_Record(TextRecord const & record, Rect const & sourcerect, unsi
 		return;
 	}
 
-	int wanted = Scaled_Face_Size_For_Capital((record.Shape.Bottom - record.Shape.Top + 1) * scale);
-	int drop = std::max((scale + 1) / 2, 1);
-	int edge = std::max(scale / 2, 1);
+	int wanted = Scaled_Face_Size_For_Capital(Enlarged(record.Shape.Bottom - record.Shape.Top + 1, scale));
+	int drop = std::max(((int)scale + 1) / 2, 1);
+	int edge = std::max((int)scale / 2, 1);
 
 	for (TextLine const & line : record.Lines) {
-		int room = line.Width * scale;
+		int room = Enlarged(line.Width, scale);
 		int size = wanted;
 		int width = Scaled_Face_String_Width(line.Text.c_str(), size);
 
@@ -752,24 +762,24 @@ static void Draw_Record(TextRecord const & record, Rect const & sourcerect, unsi
 					descent = std::max(descent, glyph->Height - glyph->Top);
 				}
 			}
-			if (ascent + descent + above + below <= line.Height * scale || size <= SMALLEST_SIZE) {
+			if (ascent + descent + above + below <= Enlarged(line.Height, scale) || size <= SMALLEST_SIZE) {
 				break;
 			}
 			size--;
 		}
 		width = Scaled_Face_String_Width(line.Text.c_str(), size);
-		int x = destorigin.X + (line.X - sourcerect.X) * scale;
+		int x = destorigin.X + Enlarged(line.X - sourcerect.X, scale);
 		if (record.Align == SHARP_TEXT_CENTER) {
 			x += (room - width) / 2;
 		} else if (record.Align == SHARP_TEXT_RIGHT) {
 			x += room - width;
 		} else {
-			x += record.Shape.Left * scale;
+			x += Enlarged(record.Shape.Left, scale);
 		}
-		int top = destorigin.Y + (line.Y - sourcerect.Y) * scale;
-		int baseline = top + (record.Shape.Bottom + 1) * scale;
+		int top = destorigin.Y + Enlarged(line.Y - sourcerect.Y, scale);
+		int baseline = top + Enlarged(record.Shape.Bottom + 1, scale);
 		int low = top + ascent + above;
-		int high = top + line.Height * scale - descent - below;
+		int high = top + Enlarged(line.Height, scale) - descent - below;
 		if (low <= high) {
 			baseline = std::clamp(baseline, low, high);
 		}
@@ -863,7 +873,7 @@ void Sharp_Text_Show(Surface & source, Rect const & sourcerect, Surface & dest, 
 		if (record.IsHidden) {
 			record.IsHidden = false;
 			if (buffer != NULL) {
-				Draw_Record(record, sourcerect, buffer, dest.Stride(), clip, destorigin, scale);
+				Draw_Record(record, sourcerect, buffer, dest.Stride(), clip, destorigin, (float)scale);
 			}
 		}
 	}
@@ -1140,17 +1150,53 @@ void Sharp_Text_Draw_Glyph(Surface & surface, ConvertClass & converter, ShapeSet
 }
 
 
-/// <summary>Enlarges the menu art and draws its recorded text at the enlarged resolution.</summary>
-/// <returns>Whether the composed frame replaces the software surface for presentation.</returns>
-bool Sharp_Text_Menu_Frame(Surface & source, std::vector<unsigned short> & pixels, int & width, int & height)
+// Which pixel of a row or column each pixel of the enlarged one shows, and how much of the
+// next it takes where it lies across two, in 32nds.
+static void Spread(std::vector<int> & index, std::vector<unsigned char> & share, int from, int to)
 {
-	int scale = Frame_Scale();
-	if (scale <= 1 || Options.BitmapGameFont || !Scaled_Face_Ready()) {
+	index.resize(to);
+	share.resize(to);
+
+	for (int pixel = 0; pixel < to; pixel++) {
+		long long start = (long long)pixel * from;
+		long long end = start + from;
+		int first = (int)(start / to);
+		int last = (int)((end - 1) / to);
+
+		index[pixel] = first;
+		share[pixel] = 0;
+		if (last > first && last < from) {
+			share[pixel] = (unsigned char)((end - (long long)last * to) * 32 / from);
+		}
+	}
+}
+
+
+static unsigned short Mix(unsigned short one, unsigned short other, unsigned int share)
+{
+	unsigned int from = (one | ((unsigned int)one << 16)) & 0x07E0F81F;
+	unsigned int to = (other | ((unsigned int)other << 16)) & 0x07E0F81F;
+	unsigned int mixed = ((from * (32 - share) + to * share) >> 5) & 0x07E0F81F;
+	return((unsigned short)(mixed | (mixed >> 16)));
+}
+
+
+/// <summary>
+/// Enlarges the menu frame to the size it is shown at and draws its remembered text over it
+/// in the scalable face. The surface is left as it was.
+/// </summary>
+/// <param name="width">The width the frame is shown at.</param>
+/// <param name="height">The height the frame is shown at.</param>
+/// <returns>bool; Do the pixels hold the frame to show in place of the surface? They do not
+/// when the menu frame is not enlarged, BitmapGameFont is on or no face could be read.</returns>
+bool Sharp_Text_Menu_Frame(Surface & source, std::vector<unsigned short> & pixels, int width, int height)
+{
+	int columns = source.Get_Width();
+	int rows = source.Get_Height();
+	if (Frame_Scale() <= 1 || width <= columns || height <= rows || source.Bytes_Per_Pixel() != 2 || Options.BitmapGameFont || !Scaled_Face_Ready()) {
 		return(false);
 	}
-	width = source.Get_Width() * scale;
-	height = source.Get_Height() * scale;
-	pixels.resize((std::size_t)width * height);
+
 	Rect rect = source.Get_Rect();
 	Sharp_Text_Hide(source, rect);
 	unsigned char const * from = (unsigned char const *)source.Lock();
@@ -1158,18 +1204,48 @@ bool Sharp_Text_Menu_Frame(Surface & source, std::vector<unsigned short> & pixel
 		Sharp_Text_Show(source, rect, source, rect, Point2D(0, 0), 1, false);
 		return(false);
 	}
-	for (int y = 0; y < source.Get_Height(); y++) {
-		unsigned short const * row = (unsigned short const *)(from + (std::ptrdiff_t)y * source.Stride());
-		unsigned short * out = pixels.data() + (std::size_t)y * scale * width;
-		for (int x = 0; x < source.Get_Width(); x++) {
-			std::fill_n(out + x * scale, scale, row[x]);
+
+	static std::vector<int> across;
+	static std::vector<int> down;
+	static std::vector<unsigned char> acrossshare;
+	static std::vector<unsigned char> downshare;
+	static std::vector<unsigned short> upper;
+	static std::vector<unsigned short> lower;
+	Spread(across, acrossshare, columns, width);
+	Spread(down, downshare, rows, height);
+	upper.resize(width);
+	lower.resize(width);
+	pixels.resize((std::size_t)width * height);
+
+	auto widen = [&](int row, unsigned short * out) {
+		unsigned short const * line = (unsigned short const *)(from + (std::ptrdiff_t)row * source.Stride());
+		for (int x = 0; x < width; x++) {
+			unsigned short pixel = line[across[x]];
+			if (acrossshare[x] != 0) {
+				pixel = Mix(pixel, line[across[x] + 1], acrossshare[x]);
+			}
+			out[x] = pixel;
 		}
-		for (int repeat = 1; repeat < scale; repeat++) {
-			std::copy_n(out, width, out + (std::size_t)repeat * width);
+	};
+
+	for (int y = 0; y < height; y++) {
+		unsigned short * out = pixels.data() + (std::size_t)y * width;
+		if (downshare[y] != 0) {
+			widen(down[y], upper.data());
+			widen(down[y] + 1, lower.data());
+			for (int x = 0; x < width; x++) {
+				out[x] = Mix(upper[x], lower[x], downshare[y]);
+			}
+		} else if (y > 0 && downshare[y - 1] == 0 && down[y - 1] == down[y]) {
+			std::copy_n(out - width, width, out);
+		} else {
+			widen(down[y], out);
 		}
 	}
 	source.Unlock();
-	auto & records = *Records_For(source);
+
+	float scale = (float)height / (float)rows;
+	std::vector<TextRecord> & records = *Records_For(source);
 	Place_Shape_Words(records, scale);
 	for (TextRecord & record : records) {
 		if (record.IsHidden) {

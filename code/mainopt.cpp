@@ -335,7 +335,7 @@ bool Test_Display_Mode_Dialog(int width, int height)
 	// The trial runs in the menus, so it shows the menu frame the new resolution would have.
 	int scale = Menu_Scale_For(width, height);
 
-	if (!Change_Display_Mode(width / scale, height / scale, width, height, scale, scale)) {
+	if (!Change_Display_Mode(Menu_Frame_Width_For(width, height), Menu_Frame_Height_For(width, height), width, height, scale, scale)) {
 		return(false);
 	}
 

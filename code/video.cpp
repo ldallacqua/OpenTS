@@ -334,10 +334,12 @@ static void Present(void)
 	int height = surface->Get_Height();
 	int pitch = surface->Stride();
 	_ComposingMenu = true;
-	bool composed = snapshot.Upload && Sharp_Text_Menu_Frame(*surface, menu, width, height);
+	bool composed = snapshot.Upload && Sharp_Text_Menu_Frame(*surface, menu, _ScaleInfo.DestWidth, _ScaleInfo.DestHeight);
 	_ComposingMenu = false;
 	if (composed) {
 		pixels = menu.data();
+		width = _ScaleInfo.DestWidth;
+		height = _ScaleInfo.DestHeight;
 		pitch = width * 2;
 	}
 	if (snapshot.Upload && !Backend_Set_Frame_Size(width, height)) {
