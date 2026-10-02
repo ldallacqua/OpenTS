@@ -2075,7 +2075,11 @@ bool Sharp_Text_Menu_Frame(Surface & source, std::vector<unsigned short> & pixel
 	}
 
 	// The letters are off the surface here, so the bars do not mirror them.
-	Menu_Bars_Draw((unsigned short const *)from, columns, rows, source.Stride(), pixels.data(), width, height);
+	Rect art = Menu_Bars_Art(columns, rows);
+	Rect shown((art.X * width + columns - 1) / columns, (art.Y * height + rows - 1) / rows, 0, 0);
+	shown.Width = ((art.X + art.Width) * width + columns - 1) / columns - shown.X;
+	shown.Height = ((art.Y + art.Height) * height + rows - 1) / rows - shown.Y;
+	Menu_Bars_Draw((unsigned short const *)(from + (std::ptrdiff_t)art.Y * source.Stride()) + art.X, art.Width, art.Height, source.Stride(), pixels.data(), width, height, width * 2, shown);
 	source.Unlock();
 
 	float scale = (float)height / (float)rows;

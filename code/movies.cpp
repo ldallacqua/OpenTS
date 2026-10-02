@@ -15,6 +15,8 @@
 #include "_surface.h"
 #include "audio/audioengine.h"
 #include "dsurface.h"
+#include "interfacescale.h"
+#include "menubars.h"
 #include "movieskip.h"
 #include "surface.h"
 #include "theme.h"
@@ -66,6 +68,32 @@ bool Movie_Unlock_Surface(void)
 }
 
 
+// The menu frame gets its bars when it is put on the screen. A match's frame does not, so a
+// movie fitted to it by height or by width has the room beside it filled here.
+static void Draw_Bars_Beside_Movie(Rect const & area)
+{
+	Surface * frames = CurrentVQ->DrawSurface;
+	Rect whole = VisibleSurface->Get_Rect();
+	Rect const & initial = CurrentVQ->InitialRect;
+	bool fitted = Intersect(area, whole) == area && area != whole && (area.Width == whole.Width || area.Height == whole.Height);
+
+	if (Frame_Scale() > 1 || !fitted || VisibleSurface->Bytes_Per_Pixel() != 2 || frames->Bytes_Per_Pixel() != 2 || Intersect(initial, frames->Get_Rect()) != initial) {
+		return;
+	}
+
+	unsigned char const * art = (unsigned char const *)frames->Lock();
+	if (art == NULL) {
+		return;
+	}
+	unsigned char * pixels = (unsigned char *)VisibleSurface->Lock();
+	if (pixels != NULL) {
+		Menu_Bars_Draw((unsigned short const *)(art + (std::ptrdiff_t)initial.Y * frames->Stride()) + initial.X, initial.Width, initial.Height, frames->Stride(), (unsigned short *)pixels, whole.Width, whole.Height, VisibleSurface->Stride(), area);
+		VisibleSurface->Unlock();
+	}
+	frames->Unlock();
+}
+
+
 /// <summary>
 /// Copies the finished movie frame to the screen.
 /// This routine is handed to the movie player as its frame callback when the movie is playing
@@ -84,6 +112,7 @@ void Movie_Blit_To_Screen(void)
 			*CurrentVQ->DrawSurface,
 			CurrentVQ->InitialRect
 		);
+		Draw_Bars_Beside_Movie(area);
 
 		MovieSkip::Draw_Overlay(*VisibleSurface, area);
 		Video_Present_If_Dirty();

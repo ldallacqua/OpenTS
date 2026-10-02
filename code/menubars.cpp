@@ -21,21 +21,21 @@
 static const int ART_WIDTH = 640;
 static const int ART_HEIGHT = 400;
 
-// How bright the mirrored picture is beside the artwork, and from FALLOFF frame pixels
-// away from it, in 256ths.
+// How bright the mirrored picture is beside the picture, and from FALLOFF of the picture's
+// pixels away from it, in 256ths.
 static const int NEAR_SHADE = 128;
 static const int FAR_SHADE = 64;
 static const int FALLOFF = 36;
 
-// How many frame pixels to each side the mirrored picture is averaged over.
+// How many of the picture's pixels to each side the mirrored picture is averaged over.
 static const int SOFTEN = 2;
 
 // A 16 bit pixel with its green moved up, so the three colors can be weighed in one sum.
 static const unsigned int SPREAD = 0x07E0F81F;
 
 
-// Where one row or column of the shown frame reads the bars: two neighbors that both lie on
-// its side of the artwork, and the share of the second in 32nds.
+// Where one row or column of the destination reads the bars: two neighbors that both lie on
+// its side of the picture, and the share of the second in 32nds.
 struct BarTap
 {
 	int First;
@@ -45,39 +45,52 @@ struct BarTap
 };
 
 
-static int Mirrored(int position, int start, int end)
+static int Mirrored(int position, int length)
 {
-	if (position < start) {
-		position = start * 2 - 1 - position;
-	} else if (position >= end) {
-		position = end * 2 - 1 - position;
+	if (position < 0) {
+		position = -1 - position;
+	} else if (position >= length) {
+		position = length * 2 - 1 - position;
 	}
-	return(std::clamp(position, start, end - 1));
+	return(std::clamp(position, 0, length - 1));
 }
 
 
-static void Find_Taps(std::vector<BarTap> & taps, int count, int length, int start, int end)
+// How many of the picture's pixels fit into the room beside it, and one more for the
+// neighbor the outermost is mixed with.
+static int Room(int room, int length, int shown)
+{
+	if (room <= 0) {
+		return(0);
+	}
+	return((int)(((long long)room * length + shown - 1) / shown) + 1);
+}
+
+
+static void Find_Taps(std::vector<BarTap> & taps, int length, int start, int shown, int art, int before, int count)
 {
 	taps.resize(length);
 
 	for (int pixel = 0; pixel < length; pixel++) {
 		BarTap & tap = taps[pixel];
-		int shown = (int)((long long)pixel * count / length);
 		int low = 0;
 		int high = count - 1;
 
-		tap.IsBar = shown < start || shown >= end;
-		if (shown < start) {
-			high = start - 1;
-		} else if (shown >= end) {
-			low = end;
+		tap.IsBar = pixel < start || pixel >= start + shown;
+		if (pixel < start) {
+			high = before - 1;
+		} else if (pixel >= start + shown) {
+			low = before + art;
 		}
 
-		// The middle of the shown pixel, in 32nds of a frame pixel past the middle of the
-		// frame's first.
-		long long place = ((long long)pixel * 2 + 1) * count * 16 / length - 16;
-		int first = (int)((place + 32) >> 5) - 1;
-		tap.Share = (unsigned int)(place - (long long)first * 32);
+		// The middle of the pixel, in 32nds of a picture pixel past the middle of the bars'
+		// first. The room counted before the picture keeps it from going below zero.
+		long long place = ((long long)(pixel - start) * 2 + 1) * art * 16;
+		place = (place >= 0) ? place / shown : -((-place + shown - 1) / shown);
+		place += (long long)before * 32 - 16;
+
+		int first = (int)(place >> 5);
+		tap.Share = (unsigned int)(place & 31);
 		tap.First = std::clamp(first, low, high);
 		tap.Second = std::clamp(first + 1, low, high);
 	}
@@ -96,45 +109,53 @@ static void Fill_Row(unsigned short * out, int from, int to, BarTap const & row,
 }
 
 
-/// <returns>bool; Does a menu frame of this size leave room around the artwork?</returns>
-bool Menu_Bars_Wanted(int columns, int rows)
+/// <returns>Where the artwork stands in a menu frame of this size.</returns>
+Rect Menu_Bars_Art(int columns, int rows)
 {
-	return(columns > ART_WIDTH || rows > ART_HEIGHT);
+	int width = std::min(ART_WIDTH, columns);
+	int height = std::min(ART_HEIGHT, rows);
+	return(Rect((columns - width) / 2, (rows - height) / 2, width, height));
 }
 
 
 /// <summary>
-/// Fills the room a menu frame leaves around its artwork with a darkened, softened mirror
-/// image of the artwork's edge.
+/// Fills the room around a picture with a darkened, softened mirror image of the picture's
+/// edge.
 /// </summary>
-/// <param name="frame">The menu frame's 16 bit pixels, which are only read.</param>
-/// <param name="stride">The length of a frame row in bytes.</param>
-/// <param name="pixels">The frame as it is shown, enlarged or not, a row after the other. Only
-/// the pixels around the artwork are written.</param>
-void Menu_Bars_Draw(unsigned short const * frame, int columns, int rows, int stride, unsigned short * pixels, int width, int height)
+/// <param name="art">The picture's 16 bit pixels at its own size, which are only read.</param>
+/// <param name="artstride">The length of a row of the picture in bytes.</param>
+/// <param name="pixels">The 16 bit pixels the picture is shown in, enlarged or not. Only the
+/// pixels around the picture are written.</param>
+/// <param name="stride">The length of a row of those pixels in bytes.</param>
+/// <param name="shown">Where the picture stands in those pixels. Nothing is drawn unless it
+/// lies inside them and leaves room.</param>
+void Menu_Bars_Draw(unsigned short const * art, int artwidth, int artheight, int artstride, unsigned short * pixels, int width, int height, int stride, Rect const & shown)
 {
-	if (frame == nullptr || pixels == nullptr || !Menu_Bars_Wanted(columns, rows) || width < columns || height < rows) {
+	Rect whole(0, 0, width, height);
+	if (art == nullptr || pixels == nullptr || artwidth <= 0 || artheight <= 0 || !shown.Is_Valid() || Intersect(shown, whole) != shown || shown == whole) {
 		return;
 	}
 
-	int left = std::max((columns - ART_WIDTH) / 2, 0);
-	int right = std::min(left + ART_WIDTH, columns);
-	int top = std::max((rows - ART_HEIGHT) / 2, 0);
-	int bottom = std::min(top + ART_HEIGHT, rows);
+	int left = Room(shown.X, artwidth, shown.Width);
+	int right = Room(width - shown.X - shown.Width, artwidth, shown.Width);
+	int top = Room(shown.Y, artheight, shown.Height);
+	int bottom = Room(height - shown.Y - shown.Height, artheight, shown.Height);
+	int columns = left + artwidth + right;
+	int rows = top + artheight + bottom;
 
 	auto source = [&](int x, int y) -> unsigned int {
-		unsigned short const * row = (unsigned short const *)((unsigned char const *)frame + (std::ptrdiff_t)Mirrored(y, top, bottom) * stride);
-		return(row[Mirrored(x, left, right)]);
+		unsigned short const * row = (unsigned short const *)((unsigned char const *)art + (std::ptrdiff_t)Mirrored(y - top, artheight) * artstride);
+		return(row[Mirrored(x - left, artwidth)]);
 	};
 
 	static std::vector<unsigned int> bars;
 	bars.resize((std::size_t)columns * rows);
 
 	for (int y = 0; y < rows; y++) {
-		bool between = y >= top && y < bottom;
+		bool between = y >= top && y < top + artheight;
 		for (int x = 0; x < columns; x++) {
 			if (between && x == left) {
-				x = right - 1;
+				x = left + artwidth - 1;
 				continue;
 			}
 
@@ -153,7 +174,7 @@ void Menu_Bars_Draw(unsigned short const * frame, int columns, int rows, int str
 				}
 			}
 
-			int away = std::max({left - x, x - right + 1, top - y, y - bottom + 1}) - 1;
+			int away = std::max({left - x, x - left - artwidth + 1, top - y, y - top - artheight + 1}) - 1;
 			unsigned int shade = (unsigned int)(NEAR_SHADE + (FAR_SHADE - NEAR_SHADE) * std::min(away, FALLOFF) / FALLOFF);
 			total *= 256;
 			red = red * shade / total;
@@ -165,29 +186,20 @@ void Menu_Bars_Draw(unsigned short const * frame, int columns, int rows, int str
 
 	static std::vector<BarTap> across;
 	static std::vector<BarTap> down;
-	Find_Taps(across, columns, width, left, right);
-	Find_Taps(down, rows, height, top, bottom);
-
-	int artleft = 0;
-	while (artleft < width && across[artleft].IsBar) {
-		artleft++;
-	}
-	int artright = artleft;
-	while (artright < width && !across[artright].IsBar) {
-		artright++;
-	}
+	Find_Taps(across, width, shown.X, shown.Width, artwidth, left, columns);
+	Find_Taps(down, height, shown.Y, shown.Height, artheight, top, rows);
 
 	for (int y = 0; y < height; y++) {
 		BarTap const & row = down[y];
 		unsigned int const * upper = bars.data() + (std::size_t)row.First * columns;
 		unsigned int const * lower = bars.data() + (std::size_t)row.Second * columns;
-		unsigned short * out = pixels + (std::size_t)y * width;
+		unsigned short * out = (unsigned short *)((unsigned char *)pixels + (std::ptrdiff_t)y * stride);
 
 		if (row.IsBar) {
 			Fill_Row(out, 0, width, row, across, upper, lower);
 		} else {
-			Fill_Row(out, 0, artleft, row, across, upper, lower);
-			Fill_Row(out, artright, width, row, across, upper, lower);
+			Fill_Row(out, 0, shown.X, row, across, upper, lower);
+			Fill_Row(out, shown.X + shown.Width, width, row, across, upper, lower);
 		}
 	}
 }

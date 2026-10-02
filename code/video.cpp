@@ -344,14 +344,15 @@ static void Present(void)
 		width = _ScaleInfo.DestWidth;
 		height = _ScaleInfo.DestHeight;
 		pitch = width * 2;
-	} else if (snapshot.Upload && Frame_Scale() > 1 && surface->Bytes_Per_Pixel() == 2 && Menu_Bars_Wanted(width, height)) {
+	} else if (snapshot.Upload && Frame_Scale() > 1 && surface->Bytes_Per_Pixel() == 2 && Menu_Bars_Art(width, height) != surface->Get_Rect()) {
 
 		// The bars are not part of the game's frame, so they go on a copy of it.
 		menu.resize((std::size_t)width * height);
 		for (int row = 0; row < height; row++) {
 			std::memcpy(menu.data() + (std::size_t)row * width, (unsigned char const *)pixels + (std::ptrdiff_t)row * pitch, (std::size_t)width * 2);
 		}
-		Menu_Bars_Draw((unsigned short const *)pixels, width, height, pitch, menu.data(), width, height);
+		Rect art = Menu_Bars_Art(width, height);
+		Menu_Bars_Draw((unsigned short const *)((unsigned char const *)pixels + (std::ptrdiff_t)art.Y * pitch) + art.X, art.Width, art.Height, pitch, menu.data(), width, height, width * 2, art);
 		pixels = menu.data();
 		pitch = width * 2;
 	}

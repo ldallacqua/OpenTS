@@ -22,6 +22,106 @@ body
 	decorator: image(score.pcx);
 }
 
+/*
+ * The room a wider or taller screen leaves beside the picture shows the picture again,
+ * mirrored at its edge and darkened to a half, falling to a quarter over the first 36dp.
+ */
+.mirror
+{
+	position: absolute;
+	width: 640dp;
+	height: 400dp;
+}
+
+.mirror .shade, .mirror .falloff
+{
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 100%;
+	height: 100%;
+}
+
+#mirror-left
+{
+	left: -640dp;
+	top: 0;
+	decorator: image(score.pcx flip-horizontal);
+}
+
+#mirror-left .falloff
+{
+	left: 604dp;
+	width: 36dp;
+	decorator: horizontal-gradient(#000000c0 #00000080);
+}
+
+#mirror-left .shade
+{
+	width: 604dp;
+	background-color: #000000c0;
+}
+
+#mirror-right
+{
+	left: 640dp;
+	top: 0;
+	decorator: image(score.pcx flip-horizontal);
+}
+
+#mirror-right .falloff
+{
+	width: 36dp;
+	decorator: horizontal-gradient(#00000080 #000000c0);
+}
+
+#mirror-right .shade
+{
+	left: 36dp;
+	width: 604dp;
+	background-color: #000000c0;
+}
+
+#mirror-top
+{
+	left: 0;
+	top: -400dp;
+	decorator: image(score.pcx flip-vertical);
+}
+
+#mirror-top .falloff
+{
+	top: 364dp;
+	height: 36dp;
+	decorator: vertical-gradient(#000000c0 #00000080);
+}
+
+#mirror-top .shade
+{
+	height: 364dp;
+	background-color: #000000c0;
+}
+
+#mirror-bottom
+{
+	left: 0;
+	top: 400dp;
+	decorator: image(score.pcx flip-vertical);
+}
+
+#mirror-bottom .falloff
+{
+	height: 36dp;
+	decorator: vertical-gradient(#00000080 #000000c0);
+}
+
+#mirror-bottom .shade
+{
+	top: 36dp;
+	height: 364dp;
+	background-color: #000000c0;
+}
+
 #box
 {
 	position: absolute;

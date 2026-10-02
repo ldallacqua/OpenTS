@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include "rect.h"
 
-bool Menu_Bars_Wanted(int columns, int rows);
-void Menu_Bars_Draw(unsigned short const * frame, int columns, int rows, int stride, unsigned short * pixels, int width, int height);
+
+Rect Menu_Bars_Art(int columns, int rows);
+void Menu_Bars_Draw(unsigned short const * art, int artwidth, int artheight, int artstride, unsigned short * pixels, int width, int height, int stride, Rect const & shown);
