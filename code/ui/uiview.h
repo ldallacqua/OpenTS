@@ -26,6 +26,10 @@ class UIViewClass
 		virtual bool Is_Shown(void) const = 0;
 		virtual void Placed(void) {}
 
+		// True for a screen built around a 640 by 400 picture that should reach the edges of
+		// the frame, however far a match enlarges its dialogs.
+		virtual bool Fills_Frame(void) const { return(false); }
+
 		virtual float Reveal_Width(void) const { return(0.0f); }
 		virtual void Reveal_To(float width) { (void)width; }
 		virtual void Reveal_Done(void) {}

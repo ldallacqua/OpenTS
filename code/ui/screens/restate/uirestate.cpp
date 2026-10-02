@@ -327,6 +327,11 @@ class UIRestateViewClass : public UIRmlViewClass
 			Show_Frames();
 		}
 
+		virtual bool Fills_Frame(void) const override
+		{
+			return(true);
+		}
+
 		virtual void Placed(void) override
 		{
 			UIRmlViewClass::Placed();

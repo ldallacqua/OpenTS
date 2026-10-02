@@ -90,6 +90,7 @@ class UIShellClass
 		bool Documents_Visible(void) const;
 		bool Text_Input_Focused(void) const;
 		void Apply_Dimensions(void);
+		void Set_Filling(bool filling);
 		void Drop_Cached_Files(void);
 		UIPointerPosition Pointer_Position(int x, int y) const;
 		std::array<bool, UIInputStateClass::BUTTON_COUNT> Physical_Buttons(void) const;
@@ -161,4 +162,7 @@ class UIShellClass
 
 		int ArtMagnification = 1;
 		float PixelRatio = 1.0f;
+
+		// The screen on top is one that fills the frame.
+		bool Filling = false;
 };

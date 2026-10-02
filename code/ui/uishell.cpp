@@ -210,6 +210,20 @@ bool UIShellClass::Text_Input_Focused(void) const
 }
 
 
+// The picture a screen that fills the frame is built around.
+static const float UI_FILL_WIDTH = 640.0f;
+static const float UI_FILL_HEIGHT = 400.0f;
+
+
+void UIShellClass::Set_Filling(bool filling)
+{
+	if (filling != Filling) {
+		Filling = filling;
+		Apply_Dimensions();
+	}
+}
+
+
 void UIShellClass::Apply_Dimensions(void)
 {
 	UIFrameRect frame = Host.Frame();
@@ -217,6 +231,9 @@ void UIShellClass::Apply_Dimensions(void)
 	float ratio = frame.ScaleX < frame.ScaleY ? frame.ScaleX : frame.ScaleY;
 	if (ratio <= 0.0f) {
 		ratio = 1.0f;
+	}
+	if (Filling) {
+		ratio = std::max(ratio, std::min((float)frame.Width / UI_FILL_WIDTH, (float)frame.Height / UI_FILL_HEIGHT));
 	}
 
 	Context->SetDimensions(Rml::Vector2i(frame.Width, frame.Height));
@@ -226,7 +243,7 @@ void UIShellClass::Apply_Dimensions(void)
 	PixelRatio = ratio;
 	Apply_Font_Policy();
 
-	int magnification = Host.Art_Magnification();
+	int magnification = Host.Art_Magnification(ratio);
 	if (magnification != ArtMagnification) {
 		ArtMagnification = magnification;
 		Render->Set_Art_Magnification(magnification);
@@ -1108,7 +1125,10 @@ UIResult UIShellClass::Run_Modal(UIViewClass & view, UIServiceCallback const & s
 	Ensure_Dialog_Font();
 	Apply_Font_Policy();
 
+	bool wasfilling = Filling;
+	Set_Filling(view.Fills_Frame());
 	if (!Prepare_View(view)) {
+		Set_Filling(wasfilling);
 		return(UI_RESULT_FAILED_TO_OPEN);
 	}
 
@@ -1137,6 +1157,7 @@ UIResult UIShellClass::Run_Modal(UIViewClass & view, UIServiceCallback const & s
 		view.Release();
 		Modals.pop_back();
 		Services.pop_back();
+		Set_Filling(wasfilling);
 		Uncover(covered);
 		return(UI_RESULT_FAILED_TO_OPEN);
 	}
@@ -1210,6 +1231,9 @@ UIResult UIShellClass::Run_Modal(UIViewClass & view, UIServiceCallback const & s
 
 	Revealing = false;
 	RevealShown = 0.0f;
+	if (Ready) {
+		Set_Filling(wasfilling);
+	}
 	Uncover(covered);
 	ModalClosing = false;
 

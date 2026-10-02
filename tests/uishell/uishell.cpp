@@ -347,7 +347,7 @@ class TestHostClass : public UIShellHostClass
 
 		int Magnification = 1;
 
-		virtual int Art_Magnification(void) const override
+		virtual int Art_Magnification(float) const override
 		{
 			return(Magnification);
 		}

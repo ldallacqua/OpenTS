@@ -103,14 +103,12 @@ class UIEngineHostClass : public UIShellHostClass
 			return(true);
 		}
 
-		virtual int Art_Magnification(void) const override
+		virtual int Art_Magnification(float ratio) const override
 		{
 			if (Options.ScaleMode != VIDEO_SCALE_PIXELART) {
 				return(1);
 			}
 
-			UIFrameRect frame = Frame();
-			float ratio = frame.ScaleX < frame.ScaleY ? frame.ScaleX : frame.ScaleY;
 			if (ratio <= 1.0f) {
 				return(1);
 			}
