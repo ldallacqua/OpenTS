@@ -140,10 +140,11 @@ bool Wide_Picture_Size(char const * name, int & width, int & height)
 
 
 /// <param name="rgba">Receives the wide picture's pixels, four bytes each.</param>
+/// <param name="premultiply">Should the colors be multiplied by their alpha?</param>
 /// <returns>bool; Was the wide picture read?</returns>
-bool Wide_Picture_Read(char const * name, std::vector<unsigned char> & rgba, int & width, int & height)
+bool Wide_Picture_Read(char const * name, std::vector<unsigned char> & rgba, int & width, int & height, bool premultiply)
 {
-	return(name != nullptr && UI_Load_Image_File(Path_Of(name).c_str(), rgba, width, height, false) == UI_IMAGE_LOADED);
+	return(name != nullptr && UI_Load_Image_File(Path_Of(name).c_str(), rgba, width, height, premultiply) == UI_IMAGE_LOADED);
 }
 
 
@@ -261,7 +262,7 @@ static bool Prepare(Backdrop & backdrop, int wantedwidth, int shownheight)
 	std::vector<unsigned char> rgba;
 	int width = 0;
 	int height = 0;
-	if (!Wide_Picture_Read(backdrop.Name.c_str(), rgba, width, height) || width <= 0 || height <= 0) {
+	if (!Wide_Picture_Read(backdrop.Name.c_str(), rgba, width, height, false) || width <= 0 || height <= 0) {
 		DebugString("Wide picture %s could not be read\n", backdrop.Name.c_str());
 		backdrop.IsUnreadable = true;
 		return(false);

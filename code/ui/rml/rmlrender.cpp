@@ -23,6 +23,7 @@
 #include <bgfx/embedded_shader.h>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fs_debugdraw_fill_texture.bin.h>
 #include <imgui.h>
@@ -463,7 +464,7 @@ Rml::TextureHandle UIRmlBgfxRenderClass::LoadTexture(Rml::Vector2i & dimensions,
 	UIImageResult result = UI_Load_Image(source.c_str(), rgba, width, height, true);
 
 	// A wide picture is as large as it is shown, so it is not magnified like the game's art.
-	bool wide = result == UI_IMAGE_MISSING && Wide_Picture_Read(source.c_str(), rgba, width, height);
+	bool wide = result == UI_IMAGE_MISSING && Wide_Picture_Read(source.c_str(), rgba, width, height, true);
 	if (wide) {
 		result = UI_IMAGE_LOADED;
 	}
@@ -482,6 +483,19 @@ Rml::TextureHandle UIRmlBgfxRenderClass::LoadTexture(Rml::Vector2i & dimensions,
 
 	dimensions.x = width;
 	dimensions.y = height;
+
+	// A picture's high-resolution stand-in of the same shape is drawn in its place, at the
+	// size the layout gives the picture.
+	std::string sharpname = wide ? std::string() : Wide_Picture_Name(source.c_str());
+	std::vector<unsigned char> sharp;
+	int sharpwidth = 0;
+	int sharpheight = 0;
+	if (!sharpname.empty() && Wide_Picture_Size(sharpname.c_str(), sharpwidth, sharpheight)
+		&& std::abs((long long)sharpwidth * height - (long long)sharpheight * width) * 100 <= (long long)sharpwidth * height
+		&& Wide_Picture_Read(sharpname.c_str(), sharp, sharpwidth, sharpheight, true)) {
+		return(GenerateTexture(Rml::Span<const Rml::byte>(sharp.data(), sharp.size()), Rml::Vector2i(sharpwidth, sharpheight)));
+	}
+
 	if (ArtMagnification > 1 && !wide) {
 		std::vector<unsigned char> magnified;
 		if (!UI_Render_Magnify_RGBA(std::span<std::uint8_t const>(rgba.data(), rgba.size()), width, height, ArtMagnification, magnified)) {

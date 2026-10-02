@@ -25,9 +25,10 @@ The whole height of the PNG stands for the 400 rows of the original, and its mid
 
 A picture of another size that a graphical menu draws without lettering, such as the highlighted state of an item on the game select screen, is replaced the same way. Its PNG covers the picture exactly and is resized to the size the picture is shown at.
 
-Two kinds of screen use the folder:
+Three kinds of screen use the folder:
 
 - The mission briefing screen shows the wide picture for `SCORE.PCX` whenever the file exists.
+- A dialog shows the PNG for any picture its style sheets name, such as the dialog background `DBAK6440.PCX`, when the PNG has the picture's own shape to within a hundredth. The PNG is drawn at the size the layout gives the picture.
 - The title, menu, and score screens show it when the menu frame is enlarged and `BitmapGameFont=no`; see [Scalable text](/using/scalable-text/). There the wide picture is drawn wherever the screen still shows the original picture. Anything the game drew over the original, such as a score panel, keeps its enlarged pixels, and a screen that shows less than a tenth of the original's pixels that are not black is not changed. A smaller picture is replaced while the screen shows at least half of its pixels that are not black.
 
 Movies keep the mirrored bars. Where a wide picture does not reach the edge of a wider screen, the bars remain beside it.
