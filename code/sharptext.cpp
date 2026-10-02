@@ -77,6 +77,15 @@ struct TextRecord
 	bool IsHidden = false;
 };
 
+// A pixel a remembered text changed, with its value after and before that print.
+struct LetterPixel
+{
+	int X;
+	int Y;
+	unsigned short After;
+	unsigned short Clean;
+};
+
 static std::vector<TextRecord> _CompositeRecords;
 static std::vector<TextRecord> _SidebarRecords;
 static std::unordered_map<Surface const *, std::vector<TextRecord>> _MenuRecords;
@@ -327,6 +336,7 @@ Point2D Sharp_Text_Print(WWFontClass const & font, char const * string, Surface 
 	 * the same label in an earlier state and is forgotten; one it only touches stays.
 	 */
 	bool inherited = false;
+	std::vector<LetterPixel> leftovers;
 	for (std::vector<TextRecord>::iterator other = records->begin(); other != records->end(); ) {
 		Rect shared = Intersect(other->Bounds, record.Bounds);
 		if (!shared.Is_Valid() || shared.Width * shared.Height * 2 < other->Bounds.Width * other->Bounds.Height) {
@@ -336,6 +346,15 @@ Point2D Sharp_Text_Print(WWFontClass const & font, char const * string, Surface 
 		if (!inherited && other->Bounds == record.Bounds && Holds(surface, other->Bounds, other->After)) {
 			record.Clean = std::move(other->Clean);
 			inherited = true;
+		} else if (other->GlyphCode == 0 && other->Clean.size() == other->After.size()) {
+			for (int y = shared.Y; y < shared.Y + shared.Height; y++) {
+				for (int x = shared.X; x < shared.X + shared.Width; x++) {
+					std::size_t pixel = (std::size_t)(y - other->Bounds.Y) * other->Bounds.Width + x - other->Bounds.X;
+					if (other->After[pixel] != other->Clean[pixel]) {
+						leftovers.push_back(LetterPixel{x, y, other->After[pixel], other->Clean[pixel]});
+					}
+				}
+			}
 		}
 		other = records->erase(other);
 	}
@@ -349,6 +368,16 @@ Point2D Sharp_Text_Print(WWFontClass const & font, char const * string, Surface 
 			font.Print(string, surface, cliprect, point, converter, fill);
 		}
 		known = Copy_Out(surface, record.Bounds, record.Clean);
+
+		// Letters of a forgotten text that the surface still holds are not background.
+		if (known) {
+			for (LetterPixel const & letter : leftovers) {
+				std::size_t pixel = (std::size_t)(letter.Y - record.Bounds.Y) * record.Bounds.Width + letter.X - record.Bounds.X;
+				if (record.Clean[pixel] == letter.After) {
+					record.Clean[pixel] = letter.Clean;
+				}
+			}
+		}
 	}
 
 	Point2D result = font.Print(string, surface, cliprect, point, converter, remap);
