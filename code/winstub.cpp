@@ -162,7 +162,7 @@ void Load_Title_Screen(char const * name, Surface * surface, PaletteClass * pale
 
 			surface->Blit_From(surface->Get_Rect(), Rect(x, y, load_buffer->Get_Width(), load_buffer->Get_Height()), *load_buffer, load_buffer->Get_Rect(), load_buffer->Get_Rect());
 		}
-		Wide_Picture_Note(name, *surface, Rect(x, y, load_buffer->Get_Width(), load_buffer->Get_Height()));
+		Wide_Picture_Note(Wide_Picture_Name(name), *surface, Rect(x, y, load_buffer->Get_Width(), load_buffer->Get_Height()));
 		delete load_buffer;
 	}
 }

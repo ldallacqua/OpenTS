@@ -29,6 +29,7 @@
 #include "shapeset.h"
 #include "sharptext.h"
 #include "utf8.h"
+#include "widepicture.h"
 
 #include <algorithm>
 
@@ -1351,6 +1352,7 @@ MSPCXAnim::MSPCXAnim(const char * name, MS_ANIM_LIST * vector, bool transient) :
 					Rect surface_rect = TargetSurface->Get_Rect();
 					Area.X += (surface_rect.Width - Area.Width) / 2;
 					Area.Y += (surface_rect.Height - Area.Height) / 2;
+					Wide = Wide_Picture_Name(buffer);
 				}
 			}
 		}
@@ -1486,6 +1488,7 @@ void MSPCXAnim::Put_Up(Surface & surface)
 {
 	if (Label.empty()) {
 		surface.Blit_From(Area, *Image, Image->Get_Rect());
+		Wide_Picture_Note(Wide, surface, Area);
 	} else {
 		Sharp_Text_Draw_Picture(surface, Area, *Image, Label.c_str());
 	}

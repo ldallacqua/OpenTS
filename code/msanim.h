@@ -391,6 +391,9 @@ class MSPCXAnim : public MSAnim
 	private:
 		void Put_Up(Surface & surface);
 
+		// The file name of the picture's wide stand-in, or empty when it has none.
+		std::string Wide;
+
 	public:
 		/*
 		 * Pointer to the surface the picture is committed to. This is the backdrop the other

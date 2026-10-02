@@ -38,9 +38,9 @@ static char const FOLDER[] = "HD";
 // displace the one on screen.
 static const std::size_t KEPT = 4;
 
-// The share of the picture's pixels, in hundredths, a frame must still show for the wide
-// picture to be drawn over it.
-static const int LEAST_MATCH = 30;
+// The share of the picture's pixels that are not black, in hundredths, a frame must still show
+// for the wide picture to be drawn over it.
+static const int LEAST_MATCH = 10;
 
 // A wide picture this many pixels short of the frame's edge has its edge repeated up to it.
 static const int EDGE_GAP = 8;
@@ -143,20 +143,16 @@ bool Wide_Picture_Read(char const * name, std::vector<unsigned char> & rgba, int
 
 
 /// <summary>
-/// Remembers a full-screen picture that was just drawn, if it has a wide picture, so that the
-/// wide picture can be shown where a frame still shows the picture.
+/// Remembers a full-screen picture that was just drawn, so that its wide picture can be shown
+/// where a frame still shows the picture.
 /// </summary>
-/// <param name="picture">The picture file's name.</param>
+/// <param name="name">The wide picture's file name, from Wide_Picture_Name. Nothing is
+/// remembered for an empty name.</param>
 /// <param name="area">Where on the surface the picture was drawn. A picture of another size
 /// than 640 by 400 is not remembered.</param>
-void Wide_Picture_Note(char const * picture, Surface const & surface, Rect const & area)
+void Wide_Picture_Note(std::string const & name, Surface const & surface, Rect const & area)
 {
-	if (surface.Bytes_Per_Pixel() != 2 || area.Width != ART_WIDTH || area.Height != ART_HEIGHT || Intersect(area, surface.Get_Rect()) != area) {
-		return;
-	}
-
-	std::string name = Wide_Picture_Name(picture);
-	if (name.empty()) {
+	if (name.empty() || surface.Bytes_Per_Pixel() != 2 || area.Width != ART_WIDTH || area.Height != ART_HEIGHT || Intersect(area, surface.Get_Rect()) != area) {
 		return;
 	}
 
@@ -325,11 +321,15 @@ static bool Shows(Backdrop const & backdrop, unsigned short const * frame, int f
 	for (int y = 0; y < ART_HEIGHT; y += STEP) {
 		unsigned short const * line = (unsigned short const *)((unsigned char const *)frame + (std::ptrdiff_t)(art.Y + y) * framestride) + art.X;
 		unsigned short const * reference = backdrop.Reference.data() + (std::size_t)y * ART_WIDTH;
-		for (int x = 0; x < ART_WIDTH; x += STEP, total++) {
-			same += (line[x] == reference[x]);
+		for (int x = 0; x < ART_WIDTH; x += STEP) {
+			// Black is on many frames that do not show the picture, so it tells nothing.
+			if (reference[x] != 0) {
+				same += (line[x] == reference[x]);
+				total++;
+			}
 		}
 	}
-	return(same * 100 >= total * LEAST_MATCH);
+	return(total > 0 && same * 100 >= total * LEAST_MATCH);
 }
 
 

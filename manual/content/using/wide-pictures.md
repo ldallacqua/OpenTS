@@ -6,6 +6,7 @@ source_files:
   - code/widepicture.cpp
   - code/sharptext.cpp
   - code/winstub.cpp
+  - code/msanim.cpp
   - code/ui/rml/rmlrender.cpp
   - code/ui/screens/restate/uirestatedlg.cpp
 ---
@@ -25,7 +26,7 @@ The whole height of the PNG stands for the 400 rows of the original, and its mid
 Two kinds of screen use the folder:
 
 - The mission briefing screen shows the wide picture for `SCORE.PCX` whenever the file exists.
-- The title, menu, and score screens show it when the menu frame is enlarged and `BitmapGameFont=no`; see [Scalable text](/using/scalable-text/). There the wide picture is drawn wherever the screen still shows the original picture. Anything the game drew over the original, such as a score panel, keeps its enlarged pixels, and a screen that shows less than about a third of the original is not changed.
+- The title, menu, and score screens show it when the menu frame is enlarged and `BitmapGameFont=no`; see [Scalable text](/using/scalable-text/). There the wide picture is drawn wherever the screen still shows the original picture. Anything the game drew over the original, such as a score panel, keeps its enlarged pixels, and a screen that shows less than a tenth of the original's pixels that are not black is not changed.
 
 Movies keep the mirrored bars. Where a wide picture does not reach the edge of a wider screen, the bars remain beside it.
 
