@@ -111,6 +111,12 @@ bool UIRmlViewClass::Prepare(UIShellClass & shell)
 
 	Shell = &shell;
 
+	// Added before the side's sheet, so the side's rules win at equal specificity.
+	std::string const face = shell.Dialog_Font_Sheet();
+	if (!face.empty()) {
+		UI_Apply_Style_Sheet(*Doc, face);
+	}
+
 	std::string const side = shell.Side_Sheet();
 	if (!side.empty() && UI_Apply_Style_Sheet(*Doc, side)) {
 		Rml::Log::Message(Rml::Log::LT_INFO, "UI: %s styles %s", side.c_str(), DocumentName.c_str());

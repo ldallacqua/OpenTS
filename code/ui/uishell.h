@@ -60,6 +60,7 @@ class UIShellClass
 		void On_Video_Change(void);
 		void On_Archives_Change(int side);
 		std::string Side_Sheet(void) const;
+		std::string Dialog_Font_Sheet(void) const;
 		void Tick(void);
 		void Render_Overlay(void);
 
@@ -125,6 +126,7 @@ class UIShellClass
 
 		std::vector<unsigned char> SystemFontData;
 		std::vector<unsigned char> PrintFontData;
+		std::vector<unsigned char> DialogFontData;
 
 		void Register_Fonts(void);
 		void Ensure_Dialog_Font(void);

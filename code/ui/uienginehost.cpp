@@ -127,6 +127,11 @@ class UIEngineHostClass : public UIShellHostClass
 			return(Options.BitmapSystemFont);
 		}
 
+		virtual bool Bitmap_Dialog_Font(void) const override
+		{
+			return(Options.BitmapDialogFont);
+		}
+
 		virtual bool Developer_Keys_Armed(void) const override
 		{
 			return(Debug_Flag);

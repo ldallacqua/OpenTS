@@ -41,6 +41,7 @@ class UIShellHostClass
 		virtual bool Animate_Screens(void) const = 0;
 		virtual int Art_Magnification(void) const = 0;
 		virtual bool Bitmap_System_Font(void) const = 0;
+		virtual bool Bitmap_Dialog_Font(void) const = 0;
 		virtual bool Developer_Keys_Armed(void) const = 0;
 		virtual void Clear_Keyboard_Queue(void) = 0;
 		virtual void Focus_Main_Window(void) = 0;

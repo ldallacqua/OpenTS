@@ -328,6 +328,29 @@ class UIRasterFaceClass
 };
 
 
+// The height of a capital letter as a share of the font size, in the faces that stand in.
+static const float UI_STAND_IN_CAPITAL = 0.7f;
+
+
+// A scalable face that reports a sheet face's measurements, so a screen lays out the same.
+class UIStandInFaceClass
+{
+	public:
+		UIStandInFaceClass(Rml::FontFaceHandle inner, Rml::FontMetrics const & measurements, float lift) :
+			Inner(inner),
+			Measurements(measurements),
+			Lift(lift)
+		{
+		}
+
+		Rml::FontFaceHandle Inner;
+		Rml::FontMetrics Measurements;
+
+		// Moves the scalable face's baseline onto the row the sheet's letters stand on.
+		float Lift;
+};
+
+
 UIFontEngineClass::UIFontEngineClass(void) :
 	Fallback(nullptr)
 {
@@ -447,6 +470,52 @@ UISheetFaceClass * UIFontEngineClass::Find_Face(Rml::FontFaceHandle handle) cons
 }
 
 
+UIStandInFaceClass * UIFontEngineClass::Find_Stand_In_Face(Rml::FontFaceHandle handle) const
+{
+	for (std::unique_ptr<UIStandInFaceClass> const & face : StandInFaces) {
+		if ((Rml::FontFaceHandle)face.get() == handle) {
+			return(face.get());
+		}
+	}
+
+	return(nullptr);
+}
+
+
+/// <returns>The face that draws a sheet family at this scale in the scalable family, or zero
+/// when the sheet has no capital to measure or the scalable family has no face.</returns>
+Rml::FontFaceHandle UIFontEngineClass::Stand_In_Face(SheetFamily const & sheets, Rml::Style::FontStyle style, Rml::Style::FontWeight weight, float scale)
+{
+	int top = 0;
+	int bottom = 0;
+	if (Fallback == nullptr || !UI_Sheet_Font_Lit_Rows(sheets.Index, sheets.Alpha, sheets.Metrics, 'H', top, bottom)) {
+		return(0);
+	}
+
+	int size = (int)((bottom - top + 1) * scale / UI_STAND_IN_CAPITAL + 0.5f);
+	Rml::FontFaceHandle inner = Fallback->GetFontFaceHandle(StandIn, style, weight, size);
+	if (inner == 0) {
+		return(0);
+	}
+
+	Rml::FontMetrics measurements = Fallback->GetFontMetrics(inner);
+	measurements.size = (int)(sheets.Metrics.GlyphHeight * scale);
+	measurements.ascent = sheets.Metrics.GlyphHeight * scale;
+	measurements.descent = 0.0f;
+	measurements.line_spacing = sheets.Metrics.Cell_Height() * scale;
+
+	for (std::unique_ptr<UIStandInFaceClass> const & face : StandInFaces) {
+		if (face->Inner == inner && face->Measurements.size == measurements.size) {
+			return((Rml::FontFaceHandle)face.get());
+		}
+	}
+
+	float lift = (float)(bottom + 1 - sheets.Metrics.Cell_Height()) * scale;
+	StandInFaces.push_back(std::make_unique<UIStandInFaceClass>(inner, measurements, lift));
+	return((Rml::FontFaceHandle)StandInFaces.back().get());
+}
+
+
 void UIFontEngineClass::Set_Magnification(int factor)
 {
 	Magnification = factor < 1 ? 1 : factor;
@@ -468,6 +537,7 @@ void UIFontEngineClass::Shutdown(void)
 {
 	Faces.clear();
 	RasterFaces.clear();
+	StandInFaces.clear();
 
 	if (Fallback != nullptr) {
 		Fallback->Shutdown();
@@ -527,6 +597,13 @@ Rml::FontFaceHandle UIFontEngineClass::GetFontFaceHandle(Rml::String const & fam
 		scale = 1.0f;
 	}
 
+	if (!StandIn.empty()) {
+		Rml::FontFaceHandle face = Stand_In_Face(*sheets, style, weight, scale);
+		if (face != 0) {
+			return(face);
+		}
+	}
+
 	for (std::unique_ptr<UISheetFaceClass> const & face : Faces) {
 		if (face->Metrics().size == (int)(sheets->Metrics.GlyphHeight * scale)) {
 			return((Rml::FontFaceHandle)face.get());
@@ -543,6 +620,10 @@ Rml::FontEffectsHandle UIFontEngineClass::PrepareFontEffects(Rml::FontFaceHandle
 	if (Find_Face(handle) != nullptr || Find_Raster_Face(handle) != nullptr) {
 		return(0);
 	}
+	UIStandInFaceClass * standin = Find_Stand_In_Face(handle);
+	if (standin != nullptr) {
+		handle = standin->Inner;
+	}
 	return(Fallback != nullptr ? Fallback->PrepareFontEffects(handle, effects) : 0);
 }
 
@@ -556,6 +637,10 @@ Rml::FontMetrics const & UIFontEngineClass::GetFontMetrics(Rml::FontFaceHandle h
 	UIRasterFaceClass * strike = Find_Raster_Face(handle);
 	if (strike != nullptr) {
 		return(strike->Metrics());
+	}
+	UIStandInFaceClass * standin = Find_Stand_In_Face(handle);
+	if (standin != nullptr) {
+		return(standin->Measurements);
 	}
 	return(Fallback->GetFontMetrics(handle));
 }
@@ -571,6 +656,10 @@ int UIFontEngineClass::GetStringWidth(Rml::FontFaceHandle handle, Rml::StringVie
 	if (strike != nullptr) {
 		return(strike->String_Width(string));
 	}
+	UIStandInFaceClass * standin = Find_Stand_In_Face(handle);
+	if (standin != nullptr) {
+		handle = standin->Inner;
+	}
 	return(Fallback != nullptr ? Fallback->GetStringWidth(handle, string, shaping, prior) : 0);
 }
 
@@ -585,6 +674,11 @@ int UIFontEngineClass::GenerateString(Rml::RenderManager & manager, Rml::FontFac
 	if (strike != nullptr) {
 		return(strike->Generate(manager, string, position, color, meshes));
 	}
+	UIStandInFaceClass * standin = Find_Stand_In_Face(handle);
+	if (standin != nullptr) {
+		handle = standin->Inner;
+		position.y += standin->Lift;
+	}
 	return(Fallback != nullptr ? Fallback->GenerateString(manager, handle, effects, string, position, color, opacity, shaping, meshes) : 0);
 }
 
@@ -594,6 +688,10 @@ int UIFontEngineClass::GetVersion(Rml::FontFaceHandle handle)
 	if (Find_Face(handle) != nullptr || Find_Raster_Face(handle) != nullptr) {
 		return(0);
 	}
+	UIStandInFaceClass * standin = Find_Stand_In_Face(handle);
+	if (standin != nullptr) {
+		handle = standin->Inner;
+	}
 	return(Fallback != nullptr ? Fallback->GetVersion(handle) : 0);
 }
 
@@ -602,6 +700,7 @@ void UIFontEngineClass::ReleaseFontResources(void)
 {
 	Faces.clear();
 	RasterFaces.clear();
+	StandInFaces.clear();
 
 	if (Fallback != nullptr) {
 		Fallback->ReleaseFontResources();

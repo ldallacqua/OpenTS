@@ -384,6 +384,22 @@ void Test_Sheet_Font(void)
 
 	UIImageIndexed mismatched = Build_Sheet(6, 8, 8, 16, 4, 255);
 	Check(!UI_Sheet_Font_Atlas(mismatched, alpha, remapped, atlas), "two sheets of different sizes are not a font");
+
+	UIImageIndexed shaded = Build_Sheet(6, 8, 16, 16, 4, 255);
+	std::memset(shaded.Palette + 3, 40, 3);
+	std::memset(shaded.Palette + 6, 200, 3);
+	Check(UI_Sheet_Font_Cell(metrics, alpha, 'H', x, y), "the sheet holds a capital");
+	for (int row = 3; row <= 6; row++) {
+		for (int column = 1; column <= 4; column++) {
+			shaded.Pixels[(std::size_t)(y + row) * shaded.Width + x + column] = 2;
+		}
+	}
+
+	int top = 0;
+	int bottom = 0;
+	Check(UI_Sheet_Font_Lit_Rows(shaded, alpha, metrics, 'H', top, bottom) && top == 3 && bottom == 6, "a letter's rows leave out the darker shadow drawn around it");
+	Check(!UI_Sheet_Font_Lit_Rows(shaded, alpha, metrics, ' ', top, bottom), "a space has no rows to find");
+	Check(!UI_Sheet_Font_Lit_Rows(mismatched, alpha, metrics, 'H', top, bottom), "nor does a letter whose two sheets differ in size");
 }
 
 

@@ -357,6 +357,13 @@ class TestHostClass : public UIShellHostClass
 			return(true);
 		}
 
+		bool BitmapDialog = true;
+
+		virtual bool Bitmap_Dialog_Font(void) const override
+		{
+			return(BitmapDialog);
+		}
+
 		int Applied = 0;
 		int Restored = 0;
 		UICursor LastCursor = UI_CURSOR_ARROW;

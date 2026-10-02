@@ -260,6 +260,7 @@ class OptionsClass {
 		KeyNumType KeyQueueMove2;
 
 		bool BitmapSystemFont;
+		bool BitmapDialogFont;
 
 	private:
 

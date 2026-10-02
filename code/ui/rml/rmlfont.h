@@ -19,6 +19,7 @@
 
 class UISheetFaceClass;
 class UIRasterFaceClass;
+class UIStandInFaceClass;
 
 
 static const int UI_SHEET_FONT_NOMINAL_SIZE = 16;
@@ -35,6 +36,10 @@ class UIFontEngineClass : public Rml::FontEngineInterface
 		void Set_Reference_Scale(float scale) { Reference = (scale > 0.0f) ? scale : 1.0f; }
 
 		void Set_Use_Strikes(bool use) { UseStrikes = use; }
+
+		// A sheet family is drawn in this scalable family instead, laid out to the sheet's
+		// measurements; an empty name draws the sheets themselves.
+		void Set_Stand_In(Rml::String const & family) { StandIn = family; }
 		void Set_Fallback(Rml::FontEngineInterface * fallback) { Fallback = fallback; }
 		bool Has_Family(Rml::String const & family) const;
 		void Set_Magnification(int factor);
@@ -70,13 +75,17 @@ class UIFontEngineClass : public Rml::FontEngineInterface
 		RasterFamily const * Find_Raster_Family(Rml::String const & family) const;
 		UISheetFaceClass * Find_Face(Rml::FontFaceHandle handle) const;
 		UIRasterFaceClass * Find_Raster_Face(Rml::FontFaceHandle handle) const;
+		UIStandInFaceClass * Find_Stand_In_Face(Rml::FontFaceHandle handle) const;
+		Rml::FontFaceHandle Stand_In_Face(SheetFamily const & sheets, Rml::Style::FontStyle style, Rml::Style::FontWeight weight, float scale);
 
 		Rml::FontEngineInterface * Fallback;
 		int Magnification = 1;
 		float Reference = 1.0f;
 		bool UseStrikes = true;
+		Rml::String StandIn;
 		std::vector<std::unique_ptr<SheetFamily>> Families;
 		std::vector<std::unique_ptr<UISheetFaceClass>> Faces;
 		std::vector<std::unique_ptr<RasterFamily>> RasterFamilies;
 		std::vector<std::unique_ptr<UIRasterFaceClass>> RasterFaces;
+		std::vector<std::unique_ptr<UIStandInFaceClass>> StandInFaces;
 };

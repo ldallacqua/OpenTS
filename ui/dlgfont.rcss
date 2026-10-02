@@ -1,0 +1,21 @@
+/*******************************************************************************
+ *                                O P E N  T S
+ *******************************************************************************
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright 2026 OpenTS contributors
+ *
+ * See LICENSE.md for applicable additional terms and warranty disclaimers.
+ ******************************************************************************/
+
+
+/* Applies to every screen while BitmapDialogFont=no. The game's own dialog letters carry a
+   dark edge, which the scalable face is given here. */
+body
+{
+	font-effect: glow(1dp 1dp 1dp 1dp #000000);
+}
+
+.sans, input[type='text'], input[type='password'], textarea, .list, .tooltip, .hotkey, .group > .rule
+{
+	font-effect: none;
+}

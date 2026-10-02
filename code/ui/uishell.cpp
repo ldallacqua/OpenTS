@@ -444,6 +444,9 @@ static char const * const UI_SANS_FONT_FILE = "micross.ttf";
 static char const * const UI_PRINT_FONT_FAMILY = "fullfnt";
 static char const * const UI_PRINT_FONT_FILE = "arial.ttf";
 static char const * const UI_SHIPPED_FONT_FILE = "Arimo.ttf";
+static char const * const UI_SCALABLE_FONT_FAMILY = "dlg-scalable";
+static char const * const UI_SCALABLE_FONT_FILE = "seguisb.ttf";
+static char const * const UI_DIALOG_FONT_SHEET = "dlgfont.rcss";
 
 static char const * const UI_REVEAL_SOUND = "EMBLEM.AUD";
 static const float UI_REVEAL_VOLUME = 64.0f / 255.0f;
@@ -531,12 +534,25 @@ void UIShellClass::Register_Fonts(void)
 	Rml::LoadFontFace(UI_SHIPPED_FONT_FILE, UI_PRINT_FONT_FAMILY, Rml::Style::FontStyle::Normal);
 
 	Rml::LoadFontFace(UI_SHIPPED_FONT_FILE, UI_SHEET_FONT_FAMILY, Rml::Style::FontStyle::Normal);
+
+	// Loaded as the family's normal weight, since the sheets' letters are heavy and a screen
+	// asks for the normal weight.
+	std::string scalable = Host.System_Font_Path(UI_SCALABLE_FONT_FILE);
+	if (!scalable.empty() && UI_Read_File(scalable.c_str(), DialogFontData)
+		&& Rml::LoadFontFace(Rml::Span<const Rml::byte>(DialogFontData.data(), DialogFontData.size()), UI_SCALABLE_FONT_FAMILY, Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Normal)) {
+		Log("UI: %s answers for %s\n", UI_SCALABLE_FONT_FILE, UI_SCALABLE_FONT_FAMILY);
+	} else {
+		Log("UI: %s is not on this machine, so %s is the shipped face\n", UI_SCALABLE_FONT_FILE, UI_SCALABLE_FONT_FAMILY);
+	}
+
+	Rml::LoadFontFace(UI_SHIPPED_FONT_FILE, UI_SCALABLE_FONT_FAMILY, Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Normal);
 }
 
 
 void UIShellClass::Apply_Font_Policy(void)
 {
 	Fonts->Set_Use_Strikes(Host.Bitmap_System_Font() && std::abs(PixelRatio - 1.0f) < 0.001f);
+	Fonts->Set_Stand_In(Host.Bitmap_Dialog_Font() ? "" : UI_SCALABLE_FONT_FAMILY);
 }
 
 
@@ -763,6 +779,16 @@ std::string UIShellClass::Side_Sheet(void) const
 
 	std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return((char)std::tolower(c)); });
 	return("side-" + name + ".rcss");
+}
+
+
+/// <summary>
+/// The style sheet that fits every screen to the scalable dialog face, empty while the
+/// dialog font is the game's own; the file may not exist.
+/// </summary>
+std::string UIShellClass::Dialog_Font_Sheet(void) const
+{
+	return(Host.Bitmap_Dialog_Font() ? std::string() : std::string(UI_DIALOG_FONT_SHEET));
 }
 
 

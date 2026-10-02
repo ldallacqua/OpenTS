@@ -12,6 +12,7 @@
 #include "hsv.h"
 #include "rgb.h"
 
+#include <algorithm>
 #include <cstring>
 
 
@@ -129,6 +130,61 @@ bool UI_Sheet_Font_Cell(UISheetFontMetrics const & metrics, UIImageIndexed const
 	y = (cell / metrics.CellsPerRow) * metrics.Cell_Height();
 
 	return(x + metrics.Cell_Width() <= alpha.Width && y + metrics.Cell_Height() <= alpha.Height);
+}
+
+
+/// <summary>
+/// Finds the rows of a character's cell that its letter occupies, leaving out the darker
+/// edge and shadow drawn around the letter. Rows count from the top of the cell.
+/// </summary>
+/// <returns>bool; Does the sheet hold the character, with at least one lit pixel?</returns>
+bool UI_Sheet_Font_Lit_Rows(UIImageIndexed const & index, UIImageIndexed const & alpha, UISheetFontMetrics const & metrics, int character, int & top, int & bottom)
+{
+	top = 0;
+	bottom = 0;
+
+	int cellx = 0;
+	int celly = 0;
+	if (index.Width != alpha.Width || index.Height != alpha.Height
+		|| index.Pixels.size() != alpha.Pixels.size()
+		|| !UI_Sheet_Font_Cell(metrics, alpha, character, cellx, celly)) {
+		return(false);
+	}
+
+	auto brightness = [&index](int x, int y) {
+		std::uint8_t const * color = index.Palette + (std::size_t)index.Pixels[(std::size_t)y * index.Width + x] * 3;
+		return(std::max(color[0], std::max(color[1], color[2])));
+	};
+
+	int brightest = 0;
+	for (int y = celly; y < celly + metrics.Cell_Height(); y++) {
+		for (int x = cellx; x < cellx + metrics.Cell_Width(); x++) {
+			if (UI_Sheet_Font_Coverage(alpha, x, y) == 255) {
+				brightest = std::max(brightest, (int)brightness(x, y));
+			}
+		}
+	}
+	if (brightest == 0) {
+		return(false);
+	}
+
+	int first = -1;
+	int last = -1;
+	for (int y = celly; y < celly + metrics.Cell_Height(); y++) {
+		for (int x = cellx; x < cellx + metrics.Cell_Width(); x++) {
+			if (UI_Sheet_Font_Coverage(alpha, x, y) == 255 && brightness(x, y) * 2 > brightest) {
+				last = y - celly;
+				if (first == -1) {
+					first = last;
+				}
+				break;
+			}
+		}
+	}
+
+	top = first;
+	bottom = last;
+	return(true);
 }
 
 

@@ -35,6 +35,8 @@ bool UI_Sheet_Font_Metrics(UIImageIndexed const & alpha, UISheetFontMetrics & me
 
 bool UI_Sheet_Font_Cell(UISheetFontMetrics const & metrics, UIImageIndexed const & alpha, int character, int & x, int & y);
 
+bool UI_Sheet_Font_Lit_Rows(UIImageIndexed const & index, UIImageIndexed const & alpha, UISheetFontMetrics const & metrics, int character, int & top, int & bottom);
+
 void UI_Sheet_Font_Remap(std::uint8_t const * palette, std::uint8_t red, std::uint8_t green, std::uint8_t blue, std::uint8_t * remapped);
 
 bool UI_Sheet_Font_Atlas(UIImageIndexed const & index, UIImageIndexed const & alpha, std::uint8_t const * remapped, std::vector<std::uint8_t> & rgba);
