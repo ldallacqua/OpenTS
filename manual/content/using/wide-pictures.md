@@ -23,10 +23,12 @@ This file replaces a `SCORE.PCX` whose contents have the checksum `7003ad74`. A 
 
 The whole height of the PNG stands for the 400 rows of the original, and its middle stands for the original's 640 columns. A PNG wider than 8:5 therefore reaches beyond the original on both sides and takes the place of the mirrored bars there. A 16:9 screen is filled by a picture of 3840 by 2160 pixels or one of the same shape. The picture is resized to the height it is shown at, so one made for the screen's own height is shown pixel for pixel.
 
+A picture of another size that a graphical menu draws without lettering, such as the highlighted state of an item on the game select screen, is replaced the same way. Its PNG covers the picture exactly and is resized to the size the picture is shown at.
+
 Two kinds of screen use the folder:
 
 - The mission briefing screen shows the wide picture for `SCORE.PCX` whenever the file exists.
-- The title, menu, and score screens show it when the menu frame is enlarged and `BitmapGameFont=no`; see [Scalable text](/using/scalable-text/). There the wide picture is drawn wherever the screen still shows the original picture. Anything the game drew over the original, such as a score panel, keeps its enlarged pixels, and a screen that shows less than a tenth of the original's pixels that are not black is not changed.
+- The title, menu, and score screens show it when the menu frame is enlarged and `BitmapGameFont=no`; see [Scalable text](/using/scalable-text/). There the wide picture is drawn wherever the screen still shows the original picture. Anything the game drew over the original, such as a score panel, keeps its enlarged pixels, and a screen that shows less than a tenth of the original's pixels that are not black is not changed. A smaller picture is replaced while the screen shows at least half of its pixels that are not black.
 
 Movies keep the mirrored bars. Where a wide picture does not reach the edge of a wider screen, the bars remain beside it.
 

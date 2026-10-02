@@ -34,13 +34,16 @@ static const int ART_HEIGHT = 400;
 // The folder of the data directory the wide pictures are read from.
 static char const FOLDER[] = "HD";
 
-// How many pictures drawn lately are remembered, so one drawn on a hidden surface does not
-// displace the one on screen.
+// How many full-screen pictures drawn lately are remembered, so one drawn on a hidden surface
+// does not displace the one on screen, and how many smaller pictures.
 static const std::size_t KEPT = 4;
+static const std::size_t KEPT_PARTS = 24;
 
-// The share of the picture's pixels that are not black, in hundredths, a frame must still show
-// for the wide picture to be drawn over it.
+// The share of a picture's pixels that are not black, in hundredths, a frame must still show
+// for the high-resolution picture to be drawn over it: of a full-screen picture, which much
+// is drawn over, and of a smaller one.
 static const int LEAST_MATCH = 10;
+static const int LEAST_PART_MATCH = 50;
 
 // A wide picture this many pixels short of the frame's edge has its edge repeated up to it.
 static const int EDGE_GAP = 8;
@@ -51,10 +54,11 @@ struct Backdrop
 	// The wide picture's file name.
 	std::string Name;
 
-	// The picture as it was drawn, ART_WIDTH by ART_HEIGHT.
+	// Where the picture was drawn on its surface, and its pixels as drawn.
+	Rect Area;
 	std::vector<unsigned short> Reference;
 
-	// The wide picture at the height it is shown at, and that size.
+	// The wide picture at the size it is shown at, and that size.
 	std::vector<unsigned short> Shown;
 	int ShownWidth = 0;
 	int ShownHeight = 0;
@@ -63,6 +67,7 @@ struct Backdrop
 };
 
 static std::vector<Backdrop> _Backdrops;
+static std::vector<Backdrop> _Parts;
 
 
 static std::string Path_Of(char const * name)
@@ -143,40 +148,45 @@ bool Wide_Picture_Read(char const * name, std::vector<unsigned char> & rgba, int
 
 
 /// <summary>
-/// Remembers a full-screen picture that was just drawn, so that its wide picture can be shown
-/// where a frame still shows the picture.
+/// Remembers a picture that was just drawn, so that its wide picture can be shown where a
+/// frame still shows the picture.
 /// </summary>
 /// <param name="name">The wide picture's file name, from Wide_Picture_Name. Nothing is
 /// remembered for an empty name.</param>
-/// <param name="area">Where on the surface the picture was drawn. A picture of another size
-/// than 640 by 400 is not remembered.</param>
+/// <param name="area">Where on the surface the picture was drawn. A picture of 640 by 400 is
+/// a full-screen one, whose wide picture may reach beyond it; the wide picture of any other
+/// covers the picture exactly.</param>
 void Wide_Picture_Note(std::string const & name, Surface const & surface, Rect const & area)
 {
-	if (name.empty() || surface.Bytes_Per_Pixel() != 2 || area.Width != ART_WIDTH || area.Height != ART_HEIGHT || Intersect(area, surface.Get_Rect()) != area) {
+	if (name.empty() || surface.Bytes_Per_Pixel() != 2 || !area.Is_Valid() || Intersect(area, surface.Get_Rect()) != area) {
 		return;
 	}
 
+	bool full = area.Width == ART_WIDTH && area.Height == ART_HEIGHT;
+	std::vector<Backdrop> & list = full ? _Backdrops : _Parts;
+
 	Backdrop backdrop;
-	auto known = std::find_if(_Backdrops.begin(), _Backdrops.end(), [&](Backdrop const & other) { return(other.Name == name); });
-	if (known != _Backdrops.end()) {
+	auto known = std::find_if(list.begin(), list.end(), [&](Backdrop const & other) { return(other.Name == name && other.Area == area); });
+	if (known != list.end()) {
 		backdrop = std::move(*known);
-		_Backdrops.erase(known);
+		list.erase(known);
 	}
 	backdrop.Name = name;
-	backdrop.Reference.resize((std::size_t)ART_WIDTH * ART_HEIGHT);
+	backdrop.Area = area;
+	backdrop.Reference.resize((std::size_t)area.Width * area.Height);
 
 	unsigned char const * from = (unsigned char const *)surface.Lock();
 	if (from == nullptr) {
 		return;
 	}
-	for (int y = 0; y < ART_HEIGHT; y++) {
-		std::memcpy(backdrop.Reference.data() + (std::size_t)y * ART_WIDTH, from + (std::ptrdiff_t)(area.Y + y) * surface.Stride() + (std::ptrdiff_t)area.X * 2, (std::size_t)ART_WIDTH * 2);
+	for (int y = 0; y < area.Height; y++) {
+		std::memcpy(backdrop.Reference.data() + (std::size_t)y * area.Width, from + (std::ptrdiff_t)(area.Y + y) * surface.Stride() + (std::ptrdiff_t)area.X * 2, (std::size_t)area.Width * 2);
 	}
 	surface.Unlock();
 
-	_Backdrops.insert(_Backdrops.begin(), std::move(backdrop));
-	if (_Backdrops.size() > KEPT) {
-		_Backdrops.resize(KEPT);
+	list.insert(list.begin(), std::move(backdrop));
+	if (list.size() > (full ? KEPT : KEPT_PARTS)) {
+		list.resize(full ? KEPT : KEPT_PARTS);
 	}
 }
 
@@ -240,9 +250,11 @@ static unsigned short To_Pixel(float red, float green, float blue, int x, int y)
 }
 
 
-static bool Prepare(Backdrop & backdrop, int shownheight)
+// Readies the wide picture at the height it is shown at, and at the width given or, for a
+// width of zero, the width its own shape gives it.
+static bool Prepare(Backdrop & backdrop, int wantedwidth, int shownheight)
 {
-	if (backdrop.ShownHeight == shownheight && !backdrop.Shown.empty()) {
+	if (backdrop.ShownHeight == shownheight && (wantedwidth == 0 || backdrop.ShownWidth == wantedwidth) && !backdrop.Shown.empty()) {
 		return(true);
 	}
 
@@ -255,7 +267,7 @@ static bool Prepare(Backdrop & backdrop, int shownheight)
 		return(false);
 	}
 
-	int shownwidth = std::max((int)(((long long)width * shownheight + height / 2) / height), 1);
+	int shownwidth = (wantedwidth > 0) ? wantedwidth : std::max((int)(((long long)width * shownheight + height / 2) / height), 1);
 	backdrop.Shown.resize((std::size_t)shownwidth * shownheight);
 	backdrop.ShownWidth = shownwidth;
 	backdrop.ShownHeight = shownheight;
@@ -312,16 +324,17 @@ static bool Prepare(Backdrop & backdrop, int shownheight)
 }
 
 
-static bool Shows(Backdrop const & backdrop, unsigned short const * frame, int framestride, Rect const & art)
+static bool Shows(Backdrop const & backdrop, unsigned short const * frame, int framestride, int least)
 {
-	static const int STEP = 4;
+	Rect const & area = backdrop.Area;
+	int step = (area.Width >= 64 && area.Height >= 64) ? 4 : 1;
 	int same = 0;
 	int total = 0;
 
-	for (int y = 0; y < ART_HEIGHT; y += STEP) {
-		unsigned short const * line = (unsigned short const *)((unsigned char const *)frame + (std::ptrdiff_t)(art.Y + y) * framestride) + art.X;
-		unsigned short const * reference = backdrop.Reference.data() + (std::size_t)y * ART_WIDTH;
-		for (int x = 0; x < ART_WIDTH; x += STEP) {
+	for (int y = 0; y < area.Height; y += step) {
+		unsigned short const * line = (unsigned short const *)((unsigned char const *)frame + (std::ptrdiff_t)(area.Y + y) * framestride) + area.X;
+		unsigned short const * reference = backdrop.Reference.data() + (std::size_t)y * area.Width;
+		for (int x = 0; x < area.Width; x += step) {
 			// Black is on many frames that do not show the picture, so it tells nothing.
 			if (reference[x] != 0) {
 				same += (line[x] == reference[x]);
@@ -329,43 +342,50 @@ static bool Shows(Backdrop const & backdrop, unsigned short const * frame, int f
 			}
 		}
 	}
-	return(total > 0 && same * 100 >= total * LEAST_MATCH);
+	return(total > 0 && same * 100 >= total * least);
 }
 
 
-/// <summary>
-/// Draws the wide picture of the full-screen picture a frame shows over the enlarged frame,
-/// wherever the frame still shows that picture or the empty room around it. Anything drawn
-/// over the picture keeps its enlarged pixels.
-/// </summary>
-/// <param name="frame">The frame's 16 bit pixels at its own size, which are only read.</param>
-/// <param name="art">Where the 640 by 400 picture stands in the frame.</param>
-/// <param name="pixels">The enlarged frame, width by height 16 bit pixels in unbroken rows.</param>
-/// <param name="shown">Where the picture stands in the enlarged frame.</param>
-/// <param name="across">For every enlarged column, the frame column it shows.</param>
-/// <param name="acrossshare">For every enlarged column, how much of the next frame column it
-/// mixes in, zero for none.</param>
-/// <param name="down">The same as across, for rows.</param>
-/// <param name="downshare">The same as acrossshare, for rows.</param>
-/// <returns>bool; Was a wide picture drawn? None is when no remembered picture with a wide
-/// picture is on the frame.</returns>
-bool Wide_Picture_Draw(unsigned short const * frame, int columns, int rows, int framestride, Rect const & art, unsigned short * pixels, int width, int height, Rect const & shown, int const * across, unsigned char const * acrossshare, int const * down, unsigned char const * downshare)
+// Draws a smaller picture's high-resolution stand-in over the enlarged frame, wherever the
+// frame still shows the picture.
+static void Draw_Part(Backdrop & part, unsigned short const * frame, int columns, int rows, int framestride, unsigned short * pixels, int width, int height, int const * across, unsigned char const * acrossshare, int const * down, unsigned char const * downshare)
 {
-	if (frame == nullptr || pixels == nullptr || art.Width != ART_WIDTH || art.Height != ART_HEIGHT || shown.Height <= 0) {
-		return(false);
+	Rect const & area = part.Area;
+	int left = (int)(((long long)area.X * width + columns - 1) / columns);
+	int right = (int)(((long long)(area.X + area.Width) * width + columns - 1) / columns);
+	int top = (int)(((long long)area.Y * height + rows - 1) / rows);
+	int bottom = (int)(((long long)(area.Y + area.Height) * height + rows - 1) / rows);
+	if (right <= left || bottom <= top || !Prepare(part, right - left, bottom - top)) {
+		return;
 	}
 
-	Backdrop * backdrop = nullptr;
-	for (Backdrop & candidate : _Backdrops) {
-		if (!candidate.IsUnreadable && Shows(candidate, frame, framestride, art)) {
-			backdrop = &candidate;
-			break;
+	auto same = [&](int column, int row) {
+		if (column < area.X || column >= area.X + area.Width || row < area.Y || row >= area.Y + area.Height) {
+			return(false);
+		}
+		unsigned short const * line = (unsigned short const *)((unsigned char const *)frame + (std::ptrdiff_t)row * framestride);
+		return(line[column] == part.Reference[(std::size_t)(row - area.Y) * area.Width + (column - area.X)]);
+	};
+
+	for (int y = std::max(top, 0); y < std::min(bottom, height); y++) {
+		int row = down[y];
+		int next = (downshare[y] != 0 && row + 1 < rows) ? row + 1 : row;
+		unsigned short const * picture = part.Shown.data() + (std::size_t)(y - top) * part.ShownWidth;
+		unsigned short * out = pixels + (std::size_t)y * width;
+
+		for (int x = std::max(left, 0); x < std::min(right, width); x++) {
+			int column = across[x];
+			int beside = (acrossshare[x] != 0 && column + 1 < columns) ? column + 1 : column;
+			if (same(column, row) && same(column, next) && same(beside, row) && same(beside, next)) {
+				out[x] = picture[x - left];
+			}
 		}
 	}
-	if (backdrop == nullptr || !Prepare(*backdrop, shown.Height)) {
-		return(false);
-	}
+}
 
+
+static void Draw_Backdrop(Backdrop * backdrop, unsigned short const * frame, int columns, int rows, int framestride, Rect const & art, unsigned short * pixels, int width, int height, Rect const & shown, int const * across, unsigned char const * acrossshare, int const * down, unsigned char const * downshare)
+{
 	// Which frame pixels show the picture, or the black around it, and which rows do throughout.
 	static std::vector<unsigned char> same;
 	static std::vector<unsigned char> whole;
@@ -425,5 +445,49 @@ bool Wide_Picture_Draw(unsigned short const * frame, int columns, int rows, int 
 			out[x] = picture[std::clamp(x - left, 0, last)];
 		}
 	}
-	return(true);
+}
+
+
+/// <summary>
+/// Draws the wide picture of the full-screen picture a frame shows over the enlarged frame,
+/// wherever the frame still shows that picture or the empty room around it. Anything drawn
+/// over the picture keeps its enlarged pixels.
+/// </summary>
+/// <param name="frame">The frame's 16 bit pixels at its own size, which are only read.</param>
+/// <param name="art">Where the 640 by 400 picture stands in the frame.</param>
+/// <param name="pixels">The enlarged frame, width by height 16 bit pixels in unbroken rows.</param>
+/// <param name="shown">Where the picture stands in the enlarged frame.</param>
+/// <param name="across">For every enlarged column, the frame column it shows.</param>
+/// <param name="acrossshare">For every enlarged column, how much of the next frame column it
+/// mixes in, zero for none.</param>
+/// <param name="down">The same as across, for rows.</param>
+/// <param name="downshare">The same as acrossshare, for rows.</param>
+/// <returns>bool; Was a wide picture drawn? None is when no remembered picture with a wide
+/// picture is on the frame.</returns>
+bool Wide_Picture_Draw(unsigned short const * frame, int columns, int rows, int framestride, Rect const & art, unsigned short * pixels, int width, int height, Rect const & shown, int const * across, unsigned char const * acrossshare, int const * down, unsigned char const * downshare)
+{
+	if (frame == nullptr || pixels == nullptr || art.Width != ART_WIDTH || art.Height != ART_HEIGHT || shown.Height <= 0) {
+		return(false);
+	}
+
+	bool drawn = false;
+	for (Backdrop & backdrop : _Backdrops) {
+		if (!backdrop.IsUnreadable && backdrop.Area == art && Shows(backdrop, frame, framestride, LEAST_MATCH)) {
+			if (Prepare(backdrop, 0, shown.Height)) {
+				Draw_Backdrop(&backdrop, frame, columns, rows, framestride, art, pixels, width, height, shown, across, acrossshare, down, downshare);
+				drawn = true;
+			}
+			break;
+		}
+	}
+
+	// The oldest is drawn first, so that of two pictures on one place the later one shows.
+	Rect whole(0, 0, columns, rows);
+	for (auto part = _Parts.rbegin(); part != _Parts.rend(); ++part) {
+		if (!part->IsUnreadable && Intersect(part->Area, whole) == part->Area && Shows(*part, frame, framestride, LEAST_PART_MATCH)) {
+			Draw_Part(*part, frame, columns, rows, framestride, pixels, width, height, across, acrossshare, down, downshare);
+			drawn = true;
+		}
+	}
+	return(drawn);
 }

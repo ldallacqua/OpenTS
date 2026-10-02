@@ -1390,6 +1390,7 @@ MSPCXAnim::MSPCXAnim(const char * name, MS_ANIM_LIST * vector, const Point2D & p
 				Image = Read_PCX_File(file);
 				if (Image != NULL) {
 					Area = Image->Get_Rect();
+					Wide = Wide_Picture_Name(buffer);
 					Area.X = position.X;
 					Area.Y = position.Y;
 					TargetSurface->Get_Rect();
