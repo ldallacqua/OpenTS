@@ -53,6 +53,7 @@
 #include "incdec.h"
 #include "init.h"
 #include "inline.h"
+#include "interfacescale.h"
 #include "misc.h"
 #include "overtype.h"
 #include "rules.h"
@@ -414,10 +415,18 @@ void ScrollClass::Scroll_Edge(Point2D const & point)
 
 		if (!noscroll) {
 			Point2D p = TacticalRect.Top_Left() + point;
-			int x = p.X;
-			int y = p.Y;
 			int w = (CompositeSurface->Get_Width()+SidebarSurface->Get_Width()) - 1;
 			int h = CompositeSurface->Get_Height() - 1;
+
+			// The screen's edges are the frame's, which an enlarged view or sidebar reaches
+			// in fewer of its own pixels.
+			if (Layout_Scaling_Active()) {
+				Layout_Point_To_Frame(p);
+				w = VisibleRect.Width - 1;
+				h = VisibleRect.Height - 1;
+			}
+			int x = p.X;
+			int y = p.Y;
 
 			bool at_screen_edge = (y <= 0 || x == 0 || x >= w || y >= h);
 

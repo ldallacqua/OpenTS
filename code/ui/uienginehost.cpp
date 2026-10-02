@@ -21,6 +21,7 @@
 #include "dbgprint.h"
 #include "globals.h"
 #include "goptions.h"
+#include "interfacescale.h"
 #include "keyboard.h"
 #include "mainloop.h"
 #include "mixfile.h"
@@ -57,8 +58,10 @@ class UIEngineHostClass : public UIShellHostClass
 			frame.Y = scale.DestY;
 			frame.Width = scale.DestWidth;
 			frame.Height = scale.DestHeight;
-			frame.ScaleX = scale.ScaleX;
-			frame.ScaleY = scale.ScaleY;
+
+			// A match enlarges its dialogs within the frame; the menu frame is enlarged as a whole.
+			frame.ScaleX = scale.ScaleX * Dialog_Scale();
+			frame.ScaleY = scale.ScaleY * Dialog_Scale();
 			return(frame);
 		}
 

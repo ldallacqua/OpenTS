@@ -372,6 +372,8 @@ bool Start_Scenario(char const * name, bool briefing, CampaignType campaign)
 		Choose_Side(Campaigns[Scen->Campaign]->CDNumber);
 	}
 
+	Enter_Game_Frame();
+
 	DebugString("Reading scenario: %s\n", name);
 
 	if (!Read_Scenario(name)) {
@@ -1198,6 +1200,8 @@ void Do_Win(void)
 		Session.GameName[0] = 0;
 	}
 
+	Enter_Menu_Frame();
+
 	/*
 	**	Stop here if this is a multiplayer game.
 	*/
@@ -1371,6 +1375,8 @@ void Do_Lose(void)
 	}
 
 	Stop_Speaking();
+
+	Enter_Menu_Frame();
 
 	/*
 	**	Stop here if this is a multiplayer game.

@@ -210,6 +210,26 @@ class OptionsClass {
 		int CursorScale;
 
 		/*
+		 * This is how many times larger than their artwork the menus and the screens between
+		 * missions are asked to be shown. Menu_Scale gives the multiple actually used, which
+		 * the resolution can lower.
+		 */
+		int MenuScale;
+
+		/*
+		 * This is how many times larger than its artwork the interface of a match is asked to
+		 * be shown. Interface_Scale gives the multiple actually used, which the resolution can
+		 * lower.
+		 */
+		int InterfaceScale;
+
+		/*
+		 * This is how many times larger than its artwork the battlefield is asked to be shown.
+		 * View_Scale gives the multiple actually used, which the resolution can lower.
+		 */
+		int ViewScale;
+
+		/*
 		 * Shows the system's arrow in place of cursor.png.
 		 */
 		bool SystemCursor;

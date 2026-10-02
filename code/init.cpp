@@ -856,6 +856,8 @@ restart:
 	gameloaded = false;
 	process = true;
 
+	Enter_Menu_Frame();
+
 	/*
 	**	[Re]set any globals that need it, in preparation for a new scenario
 	*/
@@ -5157,6 +5159,50 @@ class QuickSaveCommandClass : public CommandClass
 };
 
 
+class ZoomInCommandClass : public CommandClass
+{
+	public:
+		virtual char const * Get_Unique_Name(void) const {
+			return("ZoomIn");
+		}
+		virtual char const * Get_Display_Name(void) const {
+			return(Fetch_String(TXT_ZOOM_IN));
+		}
+		virtual char const * Get_Category(void) const {
+			return(Fetch_String((TXT_INTERFACE)));
+		}
+		virtual char const * Get_Description(void) const {
+			return(Fetch_String(TXT_ZOOM_IN_DESC));
+		}
+
+		virtual void Execute(void) const {
+			Request_View_Zoom(1);
+		}
+};
+
+
+class ZoomOutCommandClass : public CommandClass
+{
+	public:
+		virtual char const * Get_Unique_Name(void) const {
+			return("ZoomOut");
+		}
+		virtual char const * Get_Display_Name(void) const {
+			return(Fetch_String(TXT_ZOOM_OUT));
+		}
+		virtual char const * Get_Category(void) const {
+			return(Fetch_String((TXT_INTERFACE)));
+		}
+		virtual char const * Get_Description(void) const {
+			return(Fetch_String(TXT_ZOOM_OUT_DESC));
+		}
+
+		virtual void Execute(void) const {
+			Request_View_Zoom(-1);
+		}
+};
+
+
 class QuickLoadCommandClass : public CommandClass
 {
 	public:
@@ -5463,6 +5509,12 @@ static void Init_Commands(void)
 	AllCommands.Add(new QuickSaveCommandClass);
 	AllCommands.Add(new QuickLoadCommandClass);
 
+	const CommandClass * zoomincmd = new ZoomInCommandClass;
+	AllCommands.Add(zoomincmd);
+
+	const CommandClass * zoomoutcmd = new ZoomOutCommandClass;
+	AllCommands.Add(zoomoutcmd);
+
 	const CommandClass * chatallcmd = new ChatToAllCommandClass;
 	AllCommands.Add(chatallcmd);
 
@@ -5486,6 +5538,8 @@ static void Init_Commands(void)
 
 	Claim_Free_Key(KN_RETURN, chatallcmd);
 	Claim_Free_Key(KN_BACKSPACE, chatteamcmd);
+	Claim_Free_Key(KN_KEYPAD_PLUS, zoomincmd);
+	Claim_Free_Key(KN_KEYPAD_MINUS, zoomoutcmd);
 }
 
 

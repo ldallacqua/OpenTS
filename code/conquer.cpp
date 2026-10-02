@@ -69,6 +69,7 @@
 #include "_keyboar.h"
 #include "_map.h"
 #include "_palette.h"
+#include "_rect.h"
 #include "_rules.h"
 #include "_source.h"
 #include "_surface.h"
@@ -92,6 +93,7 @@
 #include "incdec.h"
 #include "infatype.h"
 #include "init.h"
+#include "interfacescale.h"
 #include "ion.h"
 #include "ipxmgr.h"
 #include "keyboard.h"
@@ -99,6 +101,7 @@
 #include "loaddlg.h"
 #include "logic.h"
 #include "mainloop.h"
+#include "mainopt.h"
 #include "msgbox.h"
 #include "movie.h"
 #include "movieskip.h"
@@ -465,6 +468,7 @@ void Main_Game(int argc, char * argv[])
 		Print_MP_Stats();
 
 		//VisiblePage.Clear();
+		Enter_Menu_Frame();
 		Title_Screen_Restore(true);
 
 		Prep_For_No_Side();
@@ -972,26 +976,29 @@ static void Resize_Tactical_View(bool flag)
 
 	if (flag) {
 
-		Rect hidden(0, 0, Options.ScreenWidth-_sidebar_width, Options.ScreenHeight);
-		Rect comp(0, 0, Options.ScreenWidth, Options.ScreenHeight);
-		Rect tile(0, 0, Options.ScreenWidth, Options.ScreenHeight);
-		Rect sidebar(0, 0, _sidebar_width, Options.ScreenHeight);
+		Rect hidden(0, 0, VisibleRect.Width-_sidebar_width, VisibleRect.Height);
+		Rect comp(0, 0, VisibleRect.Width, VisibleRect.Height);
+		Rect tile(0, 0, VisibleRect.Width, VisibleRect.Height);
+		Rect sidebar(0, 0, _sidebar_width, VisibleRect.Height);
 		Allocate_Surfaces(hidden, comp, tile, sidebar);
 
-		Rect view(0, 0, Options.ScreenWidth, Options.ScreenHeight);
+		Rect view(0, 0, VisibleRect.Width, VisibleRect.Height);
 		Map.Set_View_Dimensions(view);
 
 		Sleep(2);
 
 	} else {
 
-		Rect hidden(0, 0, Options.ScreenWidth-_sidebar_width, Options.ScreenHeight);
-		Rect comp(0, 0, Options.ScreenWidth-_sidebar_width, Options.ScreenHeight);
-		Rect tile(0, 0, Options.ScreenWidth-_sidebar_width, Options.ScreenHeight);
-		Rect sidebar(0, 0, _sidebar_width, Options.ScreenHeight);
+		int width = Tactical_Layout_Width();
+		int height = Tactical_Layout_Height();
+
+		Rect hidden(0, 0, VisibleRect.Width-Sidebar_Frame_Width(), VisibleRect.Height);
+		Rect comp(0, 0, width, height);
+		Rect tile(0, 0, width, height);
+		Rect sidebar(0, 0, _sidebar_width, Sidebar_Layout_Height());
 		Allocate_Surfaces(hidden, comp, tile, sidebar);
 
-		Rect view(0, _tab_height, Options.ScreenWidth-_sidebar_width, Options.ScreenHeight-_tab_height);
+		Rect view(0, _tab_height, width, height-_tab_height);
 		Map.Set_View_Dimensions(view);
 
 		Sleep(2);

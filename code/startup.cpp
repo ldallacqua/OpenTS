@@ -87,6 +87,7 @@
 #include "infantry.h"
 #include "infatype.h"
 #include "init.h"
+#include "interfacescale.h"
 #include "ionblast.h"
 #include "ipxmgr.h"
 #include "isotype.h"
@@ -543,6 +544,7 @@ int CALLBACK WinMain ( HINSTANCE instance , HINSTANCE , char * , int )
 		Options.WindowHeight = ConfigINI.Get_Int("Video", "WindowHeight", Options.WindowHeight);
 		Options.VSync = ConfigINI.Get_Bool("Video", "VSync", Options.VSync);
 		Options.Renderer = ConfigINI.Get_Int("Video", "Renderer", Options.Renderer);
+		Options.MenuScale = ConfigINI.Get_Int("Video", "MenuScale", Options.MenuScale);
 
 		/*
 		 * The command line asks for a window regardless of what the settings say.
@@ -568,9 +570,11 @@ int CALLBACK WinMain ( HINSTANCE instance , HINSTANCE , char * , int )
 			Options.ScreenHeight = 480;
 		}
 
-		VisibleRect = Rect(0, 0, Options.ScreenWidth, Options.ScreenHeight);
-		VideoModeWidth = Options.ScreenWidth;
-		VideoModeHeight = Options.ScreenHeight;
+		// The game opens on its menus, in the menu frame; the window takes the resolution's size.
+		VisibleRect = Rect(0, 0, Menu_Frame_Width(), Menu_Frame_Height());
+		Set_Frame_Scales(Menu_Scale(), Menu_Scale(), Menu_Scale());
+		VideoModeWidth = VisibleRect.Width;
+		VideoModeHeight = VisibleRect.Height;
 
 		if (!Game_Window_Open(Options.ScreenWidth, Options.ScreenHeight)) {
 			Main_Window_Error_Box(Fetch_String(TXT_SHORT_TITLE), Fetch_String(TXT_VIDEO_ERROR));
@@ -606,9 +610,9 @@ int CALLBACK WinMain ( HINSTANCE instance , HINSTANCE , char * , int )
 
 		VisibleSurface->Fill(0);
 
-		Rect sidebar_rect(0,0,SidebarClass::SIDE_WIDTH,VisibleRect.Height);
-		Rect tile_rect(0,0,VisibleRect.Width-sidebar_rect.Width, sidebar_rect.Height);
-		Rect composite_rect(0,0,VisibleRect.Width-sidebar_rect.Width, sidebar_rect.Height);
+		Rect sidebar_rect(0,0,SidebarClass::SIDE_WIDTH,Sidebar_Layout_Height());
+		Rect tile_rect(0,0,Tactical_Layout_Width(), Tactical_Layout_Height());
+		Rect composite_rect(0,0,Tactical_Layout_Width(), Tactical_Layout_Height());
 
 		Allocate_Surfaces(VisibleRect, composite_rect, tile_rect, sidebar_rect, false);
 		LogicalSurface = HiddenSurface;

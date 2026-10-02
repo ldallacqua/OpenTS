@@ -63,6 +63,7 @@
 #include "dbgprint.h"
 #include "globals.h"
 #include "goptions.h"
+#include "interfacescale.h"
 #include "misc.h"
 #include "sdl/sdlwindow.h"
 #include "shapeset.h"
@@ -91,7 +92,8 @@ static int Cursor_Scale(void)
 	VideoScaleInfo const & scale = Video_Get_Scale_Info();
 	float smaller = scale.ScaleX < scale.ScaleY ? scale.ScaleX : scale.ScaleY;
 
-	int result = (int)(smaller + 0.5f);
+	// A match enlarges the pointer with its interface, on top of the frame's own enlargement.
+	int result = (int)(smaller * Dialog_Scale() + 0.5f);
 	if (result < 1) result = 1;
 	if (result > 8) result = 8;
 	return(result);
@@ -461,14 +463,10 @@ void WWMouseClass::Client_To_Game(int & x, int & y) const
 {
 	Point2D point(x, y);
 	Window_Point_To_Game(point);
+	Clamp_To_Game(point);
 
-	VideoScaleInfo const & scale = Video_Get_Scale_Info();
 	x = point.X;
 	y = point.Y;
-	if (x < 0) x = 0;
-	if (y < 0) y = 0;
-	if (x >= scale.GameWidth) x = scale.GameWidth-1;
-	if (y >= scale.GameHeight) y = scale.GameHeight-1;
 }
 
 

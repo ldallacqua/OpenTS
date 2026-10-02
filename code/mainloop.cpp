@@ -41,6 +41,7 @@
 #include "ipxmgr.h"
 #include "language/language.h"
 #include "logic.h"
+#include "mainopt.h"
 #include "misc.h"
 #include "mpscore.h"
 #include "msgbox.h"
@@ -302,6 +303,7 @@ bool Main_Loop(void)
 	*/
 	if (!Session.Play) {
 		if (SpecialDialog == SDLG_NONE && GameInFocus) {
+			Service_View_Zoom();
 			UIShell.Tick();
 			Map.Input(input, x, y);
 			if (input) {

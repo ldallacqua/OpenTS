@@ -122,6 +122,7 @@
 #include "incdec.h"
 #include "infatype.h"
 #include "inline.h"
+#include "interfacescale.h"
 #include "isotype.h"
 #include "keyboard.h"
 #include "language/language.h"
@@ -257,8 +258,8 @@ void DisplayClass::One_Time(void)
 		rect.X = SidebarClass::SIDE_WIDTH;
 	}
 	rect.Y = 16;
-	rect.Width = rect.Width - SidebarClass::SIDE_WIDTH;
-	rect.Height = rect.Height - 16;
+	rect.Width = Tactical_Layout_Width();
+	rect.Height = Tactical_Layout_Height() - 16;
 	Set_View_Dimensions(rect);
 }
 

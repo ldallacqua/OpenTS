@@ -11,6 +11,7 @@
 
 #include "vidscale.h"
 
+#include "interfacescale.h"
 #include "video.h"
 
 #include <cmath>
@@ -29,7 +30,8 @@ bool Video_Scaling_Active(void)
 
 
 /// <summary>
-/// Converts a position in the window's client area into one in the frame.
+/// Converts a position in the window's client area into the layout coordinates the game
+/// works in, which are the frame's own except over an enlarged tactical view or sidebar.
 /// A position on one of the letterbox bars lands outside the frame rather than being
 /// pulled onto its edge.
 /// </summary>
@@ -42,17 +44,21 @@ void Window_Point_To_Game(Point2D & point)
 		point.X = (int)floor((point.X - scale.DestX) * (double)scale.GameWidth / (double)scale.DestWidth);
 		point.Y = (int)floor((point.Y - scale.DestY) * (double)scale.GameHeight / (double)scale.DestHeight);
 	}
+
+	Frame_Point_To_Layout(point);
 }
 
 
 /// <summary>
-/// Converts a position in the frame into one in the window's client area.
+/// Converts a position in the game's layout coordinates into one in the window's client area.
 /// </summary>
 /// <param name="point">The position to convert in place. It comes back at the top left
 /// corner of the area the frame pixel covers on screen.</param>
 void Game_Point_To_Window(Point2D & point)
 {
 	VideoScaleInfo const & scale = Video_Get_Scale_Info();
+
+	Layout_Point_To_Frame(point);
 
 	if (scale.GameWidth > 0 && scale.GameHeight > 0) {
 		point.X = scale.DestX + (int)floor(point.X * (double)scale.DestWidth / (double)scale.GameWidth);
@@ -64,13 +70,20 @@ void Game_Point_To_Window(Point2D & point)
 /// <summary>
 /// Pulls a position onto the frame if it lies outside it.
 /// </summary>
-/// <param name="point">The position to clamp in place.</param>
+/// <param name="point">The position to clamp in place, as Window_Point_To_Game left it.</param>
 void Clamp_To_Game(Point2D & point)
 {
 	VideoScaleInfo const & scale = Video_Get_Scale_Info();
+	Point2D const original = point;
 
 	if (point.X < 0) point.X = 0;
 	if (point.Y < 0) point.Y = 0;
 	if (scale.GameWidth > 0 && point.X >= scale.GameWidth) point.X = scale.GameWidth - 1;
 	if (scale.GameHeight > 0 && point.Y >= scale.GameHeight) point.Y = scale.GameHeight - 1;
+
+	// A position outside the frame is still in frame coordinates, so one pulled onto an
+	// enlarged part of it has yet to be converted.
+	if (point.X != original.X || point.Y != original.Y) {
+		Frame_Point_To_Layout(point);
+	}
 }

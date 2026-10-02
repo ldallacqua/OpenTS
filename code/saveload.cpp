@@ -82,11 +82,13 @@
 #include "infantry.h"
 #include "infatype.h"
 #include "init.h"
+#include "interfacescale.h"
 #include "ion.h"
 #include "language/language.h"
 #include "loaddlg.h"
 #include "light.h"
 #include "logic.h"
+#include "mainopt.h"
 #include "overlay.h"
 #include "overtype.h"
 #include "ovrlight.h"
@@ -743,6 +745,8 @@ static bool Put_All(SaveStreamClass & stream, int save_net)
 /// <returns>bool; Was the game state restored?</returns>
 static bool Get_All(SaveStreamClass & stream, bool save_net)
 {
+	Enter_Game_Frame();
+
 	Clear_Scenario();
 	Scen->Load(stream);
 	Disable_Addon(ADDON_ANY);
@@ -759,10 +763,10 @@ static bool Get_All(SaveStreamClass & stream, bool save_net)
 	Rect temp = VisibleRect;
 	temp.X = ((Options.IsSidebarOnRight || Debug_Map) ? 0 : SidebarClass::SIDE_WIDTH);
 	temp.Y = 16;
-	temp.Width -= SidebarClass::SIDE_WIDTH;
-	temp.Height -= 16;
+	temp.Width = Tactical_Layout_Width();
+	temp.Height = Tactical_Layout_Height() - 16;
 
-	Allocate_Surfaces(VisibleRect, Rect(0, 0, temp.Width, VisibleRect.Height), Rect(0, 0, temp.Width, VisibleRect.Height), Rect(0, 0, SidebarClass::SIDE_WIDTH, VisibleRect.Height));
+	Allocate_Surfaces(VisibleRect, Rect(0, 0, temp.Width, Tactical_Layout_Height()), Rect(0, 0, temp.Width, Tactical_Layout_Height()), Rect(0, 0, SidebarClass::SIDE_WIDTH, Sidebar_Layout_Height()));
 
 	Map.Set_View_Dimensions(temp);
 

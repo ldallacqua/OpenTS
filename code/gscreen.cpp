@@ -58,6 +58,7 @@
 #include "cctooltip.h"
 #include "gadget.h"
 #include "goptions.h"
+#include "interfacescale.h"
 #include "keyboard.h"
 #include "savestream.h"
 #include "session.h"
@@ -68,6 +69,7 @@
 #include "bench.hh"
 
 #include <algorithm>
+#include <vector>
 
 void Multiplayer_Debug_Print(void);
 
@@ -456,11 +458,138 @@ void GScreenClass::Blit_Display(void)
 
 
 /// <summary>
+/// Writes a row of pixels with every source pixel repeated.
+/// </summary>
+/// <param name="in">The first source pixel.</param>
+/// <param name="out">Where the row is written.</param>
+/// <param name="width">How many pixels to write.</param>
+/// <param name="scale">How many times a source pixel is repeated.</param>
+/// <param name="first">How many times the first source pixel is repeated, which is fewer
+/// when the row starts part of the way through it.</param>
+static void Enlarge_Row(unsigned short const * in, unsigned short * out, int width, int scale, int first)
+{
+	unsigned short * end = out + width;
+
+	for (unsigned short colour = *in++; first > 0 && out < end; first--) {
+		*out++ = colour;
+	}
+
+	unsigned short * whole = out + ((end - out) / scale) * scale;
+
+	switch (scale) {
+		case 2:
+			for (; out < whole; out += 2) {
+				unsigned short colour = *in++;
+				out[0] = colour;
+				out[1] = colour;
+			}
+			break;
+
+		case 3:
+			for (; out < whole; out += 3) {
+				unsigned short colour = *in++;
+				out[0] = colour;
+				out[1] = colour;
+				out[2] = colour;
+			}
+			break;
+
+		case 4:
+			for (; out < whole; out += 4) {
+				unsigned short colour = *in++;
+				out[0] = colour;
+				out[1] = colour;
+				out[2] = colour;
+				out[3] = colour;
+			}
+			break;
+
+		default:
+			while (out < whole) {
+				unsigned short colour = *in++;
+				for (int index = 0; index < scale; index++) {
+					*out++ = colour;
+				}
+			}
+			break;
+	}
+
+	while (out < end) {
+		*out++ = *in;
+	}
+}
+
+
+/// <summary>
+/// Copies part of a surface onto the visible surface with every pixel enlarged to a square
+/// block of pixels. Only the part of the enlarged picture inside the clip rectangle is
+/// copied.
+/// </summary>
+/// <param name="clip">The part of the visible surface that may be written.</param>
+/// <param name="dest">Where the top left corner of the enlarged picture goes.</param>
+/// <param name="source">The surface to copy from.</param>
+/// <param name="sourcerect">The part of the source to copy, which must lie inside it.</param>
+/// <param name="scale">The width and height of the block a source pixel becomes.</param>
+/// <returns>bool; Was anything copied? Nothing is unless both surfaces hold 16 bit pixels
+/// that can be locked.</returns>
+static bool Blit_Enlarged(Rect const & clip, Point2D const & dest, Surface const & source, Rect const & sourcerect, int scale)
+{
+	Rect area = Intersect(Rect(dest.X, dest.Y, sourcerect.Width * scale, sourcerect.Height * scale), Intersect(clip, VisibleSurface->Get_Rect()));
+
+	if (!area.Is_Valid() || VisibleSurface->Bytes_Per_Pixel() != 2 || source.Bytes_Per_Pixel() != 2) {
+		return(false);
+	}
+
+	unsigned char const * from = (unsigned char const *)source.Lock(Point2D(0, 0));
+	if (from == NULL) {
+		return(false);
+	}
+
+	unsigned char * to = (unsigned char *)VisibleSurface->Lock(Point2D(0, 0));
+	if (to == NULL) {
+		source.Unlock();
+		return(false);
+	}
+
+	// A row is enlarged once, off the surface, and copied to every row it covers.
+	static std::vector<unsigned short> _line;
+	_line.resize(area.Width);
+
+	int from_stride = source.Stride();
+	int to_stride = VisibleSurface->Stride();
+	int skipped = area.X - dest.X;
+	int bottom = area.Y + area.Height;
+
+	for (int y = area.Y; y < bottom; ) {
+		int offset = y - dest.Y;
+		unsigned short const * in = (unsigned short const *)(from + (sourcerect.Y + offset / scale) * from_stride) + sourcerect.X + skipped / scale;
+
+		Enlarge_Row(in, _line.data(), area.Width, scale, scale - skipped % scale);
+
+		for (int rows = std::min(scale - offset % scale, bottom - y); rows > 0; rows--, y++) {
+			memcpy(to + y * to_stride + area.X * sizeof(unsigned short), _line.data(), area.Width * sizeof(unsigned short));
+		}
+	}
+
+	VisibleSurface->Unlock();
+	source.Unlock();
+	return(true);
+}
+
+
+static Rect Enlarged(Rect const & rect, int scale)
+{
+	return(Rect(rect.X * scale, rect.Y * scale, rect.Width * scale, rect.Height * scale));
+}
+
+
+/// <summary>
 /// Presents a rendered surface onto the visible surface.
 /// This is the low level routine that gets a finished frame in front of the player. The
 /// destination is the visible surface, adjusted for the screen shake and for a sidebar
 /// sitting on the left, and the source is narrowed when the tactical map is zoomed. Any
-/// strip that the shake has left uncovered is filled with black.
+/// strip that the shake has left uncovered is filled with black. The composite surface is
+/// enlarged by the view's zoom as it is presented.
 /// </summary>
 /// <param name="surface">The surface holding the frame to present.</param>
 /// <param name="rect">The portion of the surface to present, or NULL for all of it.</param>
@@ -474,6 +603,13 @@ void Update_Visible_Surface(Surface *surface, Rect *rect)
 	}
 
 	Rect dest_rect(0, 0, surface->Get_Width(), surface->Get_Height());
+
+	// The shake and the rectangles below count in the surface's pixels until the blit.
+	int zoom = (surface == CompositeSurface) ? View_Zoom() : 1;
+	Rect clip = VisibleSurface->Get_Rect();
+	if (zoom > 1) {
+		clip.Width = Tactical_Frame_Width();
+	}
 
 	/// Screen shake handling
 	if (Map.ScreenX == 0 && Map.ScreenY == 0) {
@@ -546,7 +682,7 @@ void Update_Visible_Surface(Surface *surface, Rect *rect)
 		fill_rect.Set(fill_rect.X, 0, abs(Map.ScreenX), surface->Get_Height());
 		fill_rect.X = Map.ScreenX < 0 ? dest_rect.X + dest_rect.Width : dest_rect.X - Map.ScreenX;
 
-		VisibleSurface->Fill_Rect(VisibleSurface->Get_Rect(), fill_rect, 0);
+		VisibleSurface->Fill_Rect(VisibleSurface->Get_Rect(), Intersect(Enlarged(fill_rect, zoom), clip), 0);
 	}
 
 	/// Draw filler for Y offset
@@ -554,13 +690,25 @@ void Update_Visible_Surface(Surface *surface, Rect *rect)
 		fill_rect.Set(0, fill_rect.Y, surface->Get_Width(), abs(Map.ScreenY));
 		fill_rect.Y = Map.ScreenY < 0 ? dest_rect.Y + dest_rect.Height : dest_rect.Y - Map.ScreenY;
 
-		VisibleSurface->Fill_Rect(VisibleSurface->Get_Rect(), fill_rect, 0);
+		VisibleSurface->Fill_Rect(VisibleSurface->Get_Rect(), Intersect(Enlarged(fill_rect, zoom), clip), 0);
 	}
 
 	/*
 	 * Now blit the source surface to the visible surface
 	 */
-	VisibleSurface->Blit_From(dest_rect, *surface, src_rect, false, true);
+	if (zoom == 1) {
+		VisibleSurface->Blit_From(dest_rect, *surface, src_rect, false, true);
+	} else {
+		Rect enlarged = Enlarged(dest_rect, zoom);
+		bool same_size = (src_rect.Width == dest_rect.Width && src_rect.Height == dest_rect.Height);
+
+		src_rect = Intersect(src_rect, surface->Get_Rect());
+
+		// A scripted zoom changes the size again, by an amount only a stretch can follow.
+		if (!same_size || !src_rect.Is_Valid() || !Blit_Enlarged(clip, enlarged.Top_Left(), *surface, src_rect, zoom)) {
+			VisibleSurface->Blit_From(clip, enlarged, *surface, surface->Get_Rect(), src_rect, false, true);
+		}
+	}
 
 	Video_Present_If_Dirty();
 }

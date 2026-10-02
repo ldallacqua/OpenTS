@@ -101,6 +101,7 @@
 #include "goptions.h"
 #include "house.h"
 #include "incdec.h"
+#include "interfacescale.h"
 #include "language/language.h"
 #include "map.h"
 #include "mixfile.h"
@@ -420,7 +421,7 @@ void SidebarClass::Init_IO(void)
 	SidebarRect.X = TacticalRect.X + TacticalRect.Width;
 	SidebarRect.Y = SIDE_Y;
 	SidebarRect.Width = 641 - SidebarRect.X;
-	SidebarRect.Height = (TacticalRect.Y - SidebarRect.Y) + TacticalRect.Height;
+	SidebarRect.Height = Sidebar_Layout_Height() - SidebarRect.Y;
 
 	/*
 	**	Add the sidebar's buttons only if we're not in editor mode.
@@ -1032,6 +1033,30 @@ void SidebarClass::Draw_It(bool complete)
 
 
 /// <summary>
+/// Copies part of the sidebar surface onto the visible screen, enlarged by the sidebar's
+/// scale. Rows that would be cut off by the bottom of the frame are left out, so the rows
+/// that are copied keep their size.
+/// </summary>
+/// <param name="rect">The part to copy, in sidebar surface coordinates.</param>
+static void Blit_Sidebar_Rect(Rect const & rect)
+{
+	int scale = Sidebar_Scale();
+	int left = Options.IsSidebarOnRight ? Tactical_Frame_Width() : 0;
+	Rect source = rect;
+
+	if (scale > 1) {
+		int rows = VisibleSurface->Get_Height() / scale;
+		source = Intersect(Rect(0, 0, SidebarSurface->Get_Width(), rows), source);
+		if (!source.Is_Valid()) {
+			return;
+		}
+	}
+
+	VisibleSurface->Blit_From(Rect(left + source.X * scale, source.Y * scale, source.Width * scale, source.Height * scale), *SidebarSurface, source, false, true);
+}
+
+
+/// <summary>
 /// Copies the sidebar onto the visible screen.
 /// This routine is the last step of the sidebar's redraw. When nothing but the credits have
 /// changed, only that much is copied, so an idle sidebar costs almost nothing.
@@ -1046,13 +1071,7 @@ void SidebarClass::Blit_Sidebar(bool complete)
 			IsToBlitSidebar = false;
 			if (Map.LastDrawRect == RECT_NONE) {
 				if (IsToRedrawCredits) {
-					VisibleSurface->Blit_From(
-						Rect((Options.IsSidebarOnRight ? TacticalRect.Width : 0), 0, SIDE_WIDTH, CREDITS_HEIGHT),
-						*SidebarSurface,
-						Rect(0, 0, SIDE_WIDTH, CREDITS_HEIGHT),
-						false,
-						true
-					);
+					Blit_Sidebar_Rect(Rect(0, 0, SIDE_WIDTH, CREDITS_HEIGHT));
 					IsToRedrawCredits = false;
 				}
 				IsToBlitSidebar = false;
@@ -1063,13 +1082,18 @@ void SidebarClass::Blit_Sidebar(bool complete)
 		}
 
 		if (Map.LastDrawRect == RECT_NONE && !complete) {
-			VisibleSurface->Blit_From(Rect((Options.IsSidebarOnRight ? TacticalRect.Width : 0), 0, SIDE_WIDTH, CREDITS_HEIGHT), *SidebarSurface, Rect(0, 0, SIDE_WIDTH, CREDITS_HEIGHT));
-			VisibleSurface->Blit_From(Rect((Options.IsSidebarOnRight ? TacticalRect.Width : 0), SIDE_BODY_Y, SIDE_WIDTH, SidebarSurface->Get_Height() - SIDE_BODY_Y), *SidebarSurface, Rect(0, SIDE_BODY_Y, SIDE_WIDTH, SidebarSurface->Get_Height() - SIDE_BODY_Y));
+			Blit_Sidebar_Rect(Rect(0, 0, SIDE_WIDTH, CREDITS_HEIGHT));
+			Blit_Sidebar_Rect(Rect(0, SIDE_BODY_Y, SIDE_WIDTH, SidebarSurface->Get_Height() - SIDE_BODY_Y));
 		} else if (!IsToBlitSidebar) {
-			VisibleSurface->Blit_From(Rect(Map.LastDrawRect.X + (Options.IsSidebarOnRight ? TacticalRect.Width : 0), Map.LastDrawRect.Y, Map.LastDrawRect.Width, Map.LastDrawRect.Height), *SidebarSurface, Map.LastDrawRect);
+			Blit_Sidebar_Rect(Map.LastDrawRect);
 		} else {
-			Rect sb_rect = SidebarSurface->Get_Rect();
-			VisibleSurface->Blit_From(Rect((Options.IsSidebarOnRight ? TacticalRect.Width : 0), 0, sb_rect.Width, sb_rect.Height), *SidebarSurface, Rect(0, 0, sb_rect.Width, sb_rect.Height));
+			Blit_Sidebar_Rect(SidebarSurface->Get_Rect());
+
+			// An enlarged sidebar stops at its last whole row, which can fall short of the frame.
+			int covered = (VisibleSurface->Get_Height() / Sidebar_Scale()) * Sidebar_Scale();
+			if (covered < VisibleSurface->Get_Height()) {
+				VisibleSurface->Fill_Rect(Rect((Options.IsSidebarOnRight ? Tactical_Frame_Width() : 0), covered, Sidebar_Frame_Width(), VisibleSurface->Get_Height() - covered), 0);
+			}
 		}
 	}
 	IsToBlitSidebar = false;
@@ -2747,7 +2771,7 @@ void SidebarClass::Reposition_Sidebar(void)
 	SidebarRect.X = Options.IsSidebarOnRight ? TacticalRect.X + TacticalRect.Width : 0;
 	SidebarRect.Y = SIDE_Y;
 	SidebarRect.Width = SIDE_WIDTH;
-	SidebarRect.Height = TacticalRect.Height + TacticalRect.Y - SIDE_Y;
+	SidebarRect.Height = Sidebar_Layout_Height() - SIDE_Y;
 
 	BASECLASS::Reposition_Sidebar();
 

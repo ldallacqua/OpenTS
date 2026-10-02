@@ -13,6 +13,7 @@
 
 #include "_keyboar.h"
 #include "_map.h"
+#include "_rect.h"
 #include "_surface.h"
 #include "_tooltip.h"
 #include "_ui.h"
@@ -23,6 +24,7 @@
 #include "goptions.h"
 #include "gscreen.h"
 #include "init.h"
+#include "interfacescale.h"
 #include "misc.h"
 #include "movies.h"
 #include "queue.h"
@@ -98,14 +100,20 @@ static void On_Right_Mouse_Up(void)
 }
 
 
-static void On_Mouse_Wheel(int delta)
+// The wheel zooms the battlefield while the pointer is over it, and scrolls the sidebar
+// anywhere else.
+static void On_Mouse_Wheel(int delta, Point2D const & point)
 {
 	if (_HandlingMouseWheel) {
 		return;
 	}
 
 	_HandlingMouseWheel = true;
-	Execute_Command(delta < 0 ? "SidebarDown" : "SidebarUp");
+	if (ScenarioActive && !Debug_Map && TacticalRect.Is_Point_Within(point)) {
+		Execute_Command(delta < 0 ? "ZoomOut" : "ZoomIn");
+	} else {
+		Execute_Command(delta < 0 ? "SidebarDown" : "SidebarUp");
+	}
 	_HandlingMouseWheel = false;
 }
 
@@ -151,9 +159,9 @@ static bool Handle_Event(WindowEvent const & event)
 		return(true);
 	}
 
-	// The map and the key queue work in frame coordinates.
+	// The map and the key queue work in layout coordinates.
 	WindowEvent frame = event;
-	if (Is_Mouse_Event(event.Type) && Video_Scaling_Active()) {
+	if (Is_Mouse_Event(event.Type) && (Video_Scaling_Active() || Layout_Scaling_Active())) {
 		Point2D point(event.X, event.Y);
 		Window_Point_To_Game(point);
 		frame.X = point.X;
@@ -189,7 +197,7 @@ static bool Handle_Event(WindowEvent const & event)
 
 		case WINDOW_EVENT_MOUSE_WHEEL:
 			if (!event.Horizontal) {
-				On_Mouse_Wheel(event.Wheel < 0.0f ? -1 : 1);
+				On_Mouse_Wheel(event.Wheel < 0.0f ? -1 : 1, Point2D(frame.X, frame.Y));
 			}
 			break;
 
