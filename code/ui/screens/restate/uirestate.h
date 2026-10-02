@@ -25,6 +25,10 @@ class UIRestateServiceClass
 	public:
 		virtual ~UIRestateServiceClass(void) = default;
 		virtual void Bleep(void) = 0;
+
+		// The file name of the background's wide stand-in and its width over its height, or
+		// no name when there is none.
+		virtual std::string Wide_Background(float & shape) { return(std::string()); }
 };
 
 
@@ -42,6 +46,7 @@ class UIRestatePresenterClass : public UIPresenterClass
 		virtual void Refresh(void) override;
 		std::vector<std::string> const & Lines(void) const;
 		int Frame_Of(int line) const;	// -1 before its turn, then 0 to 2
+		std::string Wide_Background(float & shape) { return(Service.Wide_Background(shape)); }
 
 		std::vector<std::vector<std::string>> Pages;
 		int Page = 0;

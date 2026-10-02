@@ -15,6 +15,7 @@
 #include "dbgprint.h"
 #include "ui/rml/rmlrendermath.h"
 #include "ui/rml/rmltexture.h"
+#include "widepicture.h"
 
 #include "bgfxviews.hh"
 
@@ -461,6 +462,12 @@ Rml::TextureHandle UIRmlBgfxRenderClass::LoadTexture(Rml::Vector2i & dimensions,
 
 	UIImageResult result = UI_Load_Image(source.c_str(), rgba, width, height, true);
 
+	// A wide picture is as large as it is shown, so it is not magnified like the game's art.
+	bool wide = result == UI_IMAGE_MISSING && Wide_Picture_Read(source.c_str(), rgba, width, height);
+	if (wide) {
+		result = UI_IMAGE_LOADED;
+	}
+
 	if (result == UI_IMAGE_MISSING) {
 		const unsigned int clear = 0;
 		rgba.assign((unsigned char const *)&clear, (unsigned char const *)&clear + sizeof(clear));
@@ -475,7 +482,7 @@ Rml::TextureHandle UIRmlBgfxRenderClass::LoadTexture(Rml::Vector2i & dimensions,
 
 	dimensions.x = width;
 	dimensions.y = height;
-	if (ArtMagnification > 1) {
+	if (ArtMagnification > 1 && !wide) {
 		std::vector<unsigned char> magnified;
 		if (!UI_Render_Magnify_RGBA(std::span<std::uint8_t const>(rgba.data(), rgba.size()), width, height, ArtMagnification, magnified)) {
 			return(Fail("a picture could not be magnified"), (Rml::TextureHandle)0);

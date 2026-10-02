@@ -23,6 +23,7 @@ enum UIImageResult
 
 
 UIImageResult UI_Load_Image(char const * name, std::vector<unsigned char> & rgba, int & width, int & height, bool premultiply);
+UIImageResult UI_Load_Image_File(char const * path, std::vector<unsigned char> & rgba, int & width, int & height, bool premultiply);
 
 bool UI_Read_File(char const * path, std::vector<unsigned char> & bytes);
 

@@ -19,6 +19,7 @@
 		<div id="mirror-right" class="mirror"><div class="shade"></div><div class="falloff"></div></div>
 		<div id="mirror-top" class="mirror"><div class="shade"></div><div class="falloff"></div></div>
 		<div id="mirror-bottom" class="mirror"><div class="shade"></div><div class="falloff"></div></div>
+		<div id="wide"></div>
 		<div id="box"><div id="page"></div></div>
 		<button id="more" data-visible="more" data-event-click="queue('more')">[[TXT_MORE]]</button>
 		<button id="resume" data-visible="done" data-class-paired="video" data-event-click="queue('resume')">[[TXT_RESUME_MISSION]]</button>

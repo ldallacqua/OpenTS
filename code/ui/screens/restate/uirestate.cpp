@@ -336,6 +336,7 @@ class UIRestateViewClass : public UIRmlViewClass
 		{
 			UIRmlViewClass::Placed();
 			Place_Frame();
+			Show_Wide();
 			if (!Data.LaidOut) {
 				Lay_Out();
 			}
@@ -409,6 +410,27 @@ class UIRestateViewClass : public UIRmlViewClass
 			frame->SetProperty("top", Rml::ToString(top) + "dp");
 		}
 
+		// The picture's wide stand-in covers it and reaches as far beside it as its shape allows.
+		void Show_Wide(void)
+		{
+			Rml::Element * wide = (Document() != nullptr) ? Document()->GetElementById("wide") : nullptr;
+			if (wide == nullptr || WideShown) {
+				return;
+			}
+			WideShown = true;
+
+			float shape = 0.0f;
+			std::string name = Data.Wide_Background(shape);
+			if (name.empty() || shape <= 0.0f) {
+				return;
+			}
+
+			float shown = FRAME_HEIGHT * shape;
+			wide->SetProperty("width", Rml::ToString(shown) + "dp");
+			wide->SetProperty("left", Rml::ToString((FRAME_WIDTH - shown) * 0.5f) + "dp");
+			wide->SetProperty("decorator", "image(" + name + ")");
+		}
+
 		void Build_Page(void)
 		{
 			Rml::Element * page = (Document() != nullptr) ? Document()->GetElementById("page") : nullptr;
@@ -462,6 +484,7 @@ class UIRestateViewClass : public UIRmlViewClass
 		int Built = -1;
 		std::vector<int> Shown;
 		float FrameLeft = -1.0e9f;
+		bool WideShown = false;
 		float FrameTop = -1.0e9f;
 };
 

@@ -23,6 +23,7 @@
 #include "shapeset.h"
 #include "surface.h"
 #include "utf8.h"
+#include "widepicture.h"
 #include "wwfont.h"
 
 #include <algorithm>
@@ -2080,6 +2081,7 @@ bool Sharp_Text_Menu_Frame(Surface & source, std::vector<unsigned short> & pixel
 	shown.Width = ((art.X + art.Width) * width + columns - 1) / columns - shown.X;
 	shown.Height = ((art.Y + art.Height) * height + rows - 1) / rows - shown.Y;
 	Menu_Bars_Draw((unsigned short const *)(from + (std::ptrdiff_t)art.Y * source.Stride()) + art.X, art.Width, art.Height, source.Stride(), pixels.data(), width, height, width * 2, shown);
+	Wide_Picture_Draw((unsigned short const *)from, columns, rows, source.Stride(), art, pixels.data(), width, height, shown, across.data(), acrossshare.data(), down.data(), downshare.data());
 	source.Unlock();
 
 	float scale = (float)height / (float)rows;

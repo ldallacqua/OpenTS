@@ -104,6 +104,33 @@ bool UI_Load_Indexed_Image(char const * name, UIImageIndexed & image)
 }
 
 
+static UIImageResult Decode(char const * name, std::vector<unsigned char> const & encoded, std::vector<unsigned char> & rgba, int & width, int & height, bool premultiply)
+{
+	int channels = 0;
+	unsigned char * pixels = stbi_load_from_memory(encoded.data(), (int)encoded.size(), &width, &height, &channels, 4);
+	if (pixels == NULL) {
+		DebugString("UI: %s did not decode: %s\n", name, stbi_failure_reason());
+		width = 0;
+		height = 0;
+		return(UI_IMAGE_UNREADABLE);
+	}
+
+	rgba.assign(pixels, pixels + (size_t)width * (size_t)height * 4);
+	stbi_image_free(pixels);
+
+	for (size_t index = 0; premultiply && index < rgba.size(); index += 4) {
+		unsigned int alpha = rgba[index + 3];
+		if (alpha != 255) {
+			rgba[index] = (unsigned char)(rgba[index] * alpha / 255);
+			rgba[index + 1] = (unsigned char)(rgba[index + 1] * alpha / 255);
+			rgba[index + 2] = (unsigned char)(rgba[index + 2] * alpha / 255);
+		}
+	}
+
+	return(UI_IMAGE_LOADED);
+}
+
+
 UIImageResult UI_Load_Image(char const * name, std::vector<unsigned char> & rgba, int & width, int & height, bool premultiply)
 {
 	rgba.clear();
@@ -138,26 +165,25 @@ UIImageResult UI_Load_Image(char const * name, std::vector<unsigned char> & rgba
 		return(UI_IMAGE_LOADED);
 	}
 
-	int channels = 0;
-	unsigned char * pixels = stbi_load_from_memory(encoded.data(), (int)encoded.size(), &width, &height, &channels, 4);
-	if (pixels == NULL) {
-		DebugString("UI: %s did not decode: %s\n", name, stbi_failure_reason());
-		width = 0;
-		height = 0;
-		return(UI_IMAGE_UNREADABLE);
+	return(Decode(name, encoded, rgba, width, height, premultiply));
+}
+
+
+/// <summary>
+/// Reads a PNG or TGA picture from a file on disk, outside the game's own file search.
+/// </summary>
+/// <param name="path">The file's whole path.</param>
+/// <param name="premultiply">Should the colors be multiplied by their alpha?</param>
+UIImageResult UI_Load_Image_File(char const * path, std::vector<unsigned char> & rgba, int & width, int & height, bool premultiply)
+{
+	rgba.clear();
+	width = 0;
+	height = 0;
+
+	std::vector<unsigned char> encoded;
+	if (!UI_Read_File(path, encoded)) {
+		return(UI_IMAGE_MISSING);
 	}
 
-	rgba.assign(pixels, pixels + (size_t)width * (size_t)height * 4);
-	stbi_image_free(pixels);
-
-	for (size_t index = 0; premultiply && index < rgba.size(); index += 4) {
-		unsigned int alpha = rgba[index + 3];
-		if (alpha != 255) {
-			rgba[index] = (unsigned char)(rgba[index] * alpha / 255);
-			rgba[index + 1] = (unsigned char)(rgba[index + 1] * alpha / 255);
-			rgba[index + 2] = (unsigned char)(rgba[index + 2] * alpha / 255);
-		}
-	}
-
-	return(UI_IMAGE_LOADED);
+	return(Decode(path, encoded, rgba, width, height, premultiply));
 }

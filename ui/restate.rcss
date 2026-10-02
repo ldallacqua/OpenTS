@@ -122,6 +122,14 @@ body
 	background-color: #000000c0;
 }
 
+/* The picture's wide stand-in, which the screen sizes and fills in when there is one. */
+#wide
+{
+	position: absolute;
+	top: 0;
+	height: 400dp;
+}
+
 #box
 {
 	position: absolute;
