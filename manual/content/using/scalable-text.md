@@ -21,7 +21,7 @@ Both options default to `yes`, which preserves the bitmap fonts. The UI's menu l
 
 `BitmapDialogFont=no` keeps the dialog font's original layout metrics while drawing its letters with Segoe UI Semibold, or the shipped Arimo face when the Windows font is unavailable.
 
-`BitmapGameFont=no` replaces enlarged battlefield and sidebar labels, software menu text, and campaign and multiplayer score text. The match labels keep their colors, alignment, and shadows, and fit their descenders inside the original line height. The score letters keep their original positions, widths, vertical color shading, and typing animation. Game logos and lettering embedded in pictures remain artwork.
+`BitmapGameFont=no` replaces enlarged battlefield and sidebar labels, software menu text, and campaign and multiplayer score text. The match labels keep their colors, alignment, and shadows, and fit their descenders inside the original line height. The score letters keep their color, their capital height, the position where each word starts, and the typing animation; within a word the letters take the scalable face's own widths and spacing, so a word can end a little left or right of where the bitmap word ended. Game logos and lettering embedded in pictures remain artwork.
 
 Match text follows `InterfaceScale` and `ViewScale`; score text follows `MenuScale`. A surface displayed at its original size keeps its bitmap text. Enlarged software text also keeps the bitmap font if no scalable face can be loaded. Text covered by later drawing is clipped around that drawing, or keeps its bitmap pixels when too little of the original text remains.
 
