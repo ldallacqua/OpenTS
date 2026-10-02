@@ -16,6 +16,8 @@
 
 #include "draw.hh"
 
+#include <string>
+
 class ConvertClass;
 class MSFont;
 class MSAnim;
@@ -384,6 +386,11 @@ class MSPCXAnim : public MSAnim
 		virtual bool Has_Finished(void) const override;
 		virtual void Restore(Rect const & rect) override;
 
+		void Set_Label(char const * text);
+
+	private:
+		void Put_Up(Surface & surface);
+
 	public:
 		/*
 		 * Pointer to the surface the picture is committed to. This is the backdrop the other
@@ -420,6 +427,12 @@ class MSPCXAnim : public MSAnim
 		 * on the surface unless an explicit position was supplied.
 		 */
 		Rect Area;
+
+		/*
+		 * What the lettering painted into the picture says, a line of it after the other. It
+		 * is empty for a picture without lettering.
+		 */
+		std::string Label;
 };
 
 

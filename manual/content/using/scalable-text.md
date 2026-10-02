@@ -6,6 +6,7 @@ source_files:
   - code/options.cpp
   - code/sharptext.cpp
   - code/scaledface.cpp
+  - code/grphmimg.cpp
   - code/ui/uishell.cpp
 ---
 
@@ -21,7 +22,9 @@ Both options default to `yes`, which preserves the bitmap fonts. The UI's menu l
 
 `BitmapDialogFont=no` keeps the dialog font's original layout metrics while drawing its letters with Segoe UI Semibold, or the shipped Arimo face when the Windows font is unavailable.
 
-`BitmapGameFont=no` replaces enlarged battlefield and sidebar labels, software menu text, and campaign and multiplayer score text. The match labels keep their colors, alignment, and shadows, and fit their descenders inside the original line height. The score letters keep their color, their capital height, the position where each word starts, and the typing animation; within a word the letters take the scalable face's own widths and spacing, so a word can end a little left or right of where the bitmap word ended. Game logos and lettering embedded in pictures remain artwork.
+`BitmapGameFont=no` replaces enlarged battlefield and sidebar labels, software menu text, and campaign and multiplayer score text. The match labels keep their colors, alignment, and shadows, and fit their descenders inside the original line height. The score letters keep their color, their capital height, the position where each word starts, and the typing animation; within a word the letters take the scalable face's own widths and spacing, so a word can end a little left or right of where the bitmap word ended.
+
+The options of the stock main menus and the game select screen are pictures with their lettering painted in. `BitmapGameFont=no` also draws that lettering in a scalable face, TeX Gyre Adventor, shipped as `texgyreadventor-bold.otf` in the `ui` directory. Each option keeps its letter color, its shadow, and the glow of its picture in every state. A picture whose lettering does not fit the English wording, such as another language's artwork, is shown unchanged, and so are all of them when the face file is missing. Game logos and the `GDI` and `NOD` lettering of the campaign score screen remain artwork.
 
 Match text follows `InterfaceScale` and `ViewScale`; score text follows `MenuScale`. A surface displayed at its original size keeps its bitmap text. Enlarged software text also keeps the bitmap font if no scalable face can be loaded. Text covered by later drawing is clipped around that drawing, or keeps its bitmap pixels when too little of the original text remains.
 

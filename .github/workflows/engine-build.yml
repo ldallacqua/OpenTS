@@ -115,6 +115,7 @@ jobs:
           cp thirdparty/SDL/src/video/yuv2rgb/LICENSE artifact/OpenTS_THIRD_PARTY_LICENSES/yuv2rgb.txt
           cp thirdparty/licenses/sdl-fdlibm.txt artifact/OpenTS_THIRD_PARTY_LICENSES/fdlibm.txt
           cp ui/OFL.txt artifact/OpenTS_THIRD_PARTY_LICENSES/arimo.txt
+          cp ui/GUST-FONT-LICENSE.txt artifact/OpenTS_THIRD_PARTY_LICENSES/tex-gyre-adventor.txt
 
       - name: Upload runtime files
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

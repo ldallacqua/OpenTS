@@ -32,7 +32,17 @@ struct ScaledGlyph
 };
 
 
-bool Scaled_Face_Ready(void);
+// The faces text is drawn in: the one of dialogs, labels and messages, and the geometric one
+// the menu pictures are lettered in.
+enum ScaledFaceType {
+	SCALED_FACE_TEXT,
+	SCALED_FACE_TITLE,
+
+	SCALED_FACE_COUNT
+};
+
+
+bool Scaled_Face_Ready(ScaledFaceType face = SCALED_FACE_TEXT);
 int Scaled_Face_Size_For_Capital(int height);
-ScaledGlyph const * Scaled_Face_Glyph(char32_t code, int size, int width = 0);
+ScaledGlyph const * Scaled_Face_Glyph(char32_t code, int size, int width = 0, ScaledFaceType face = SCALED_FACE_TEXT);
 int Scaled_Face_String_Width(char const * text, int size);

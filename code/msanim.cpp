@@ -27,6 +27,7 @@
 #include "msfont.h"
 #include "pcx.h"
 #include "shapeset.h"
+#include "sharptext.h"
 #include "utf8.h"
 
 #include <algorithm>
@@ -1420,7 +1421,7 @@ bool MSPCXAnim::Advance(Surface * surface, Rect & rect)
 	if (!Drawn) {
 		if (Active) {
 			if (Image != NULL) {
-				TargetSurface->Blit_From(Area, *Image, Image->Get_Rect());
+				Put_Up(*TargetSurface);
 				Redraw(surface);
 
 				Rect rect2 = Area;
@@ -1451,7 +1452,7 @@ void MSPCXAnim::Redraw(Surface * surface, const Rect * rect)
 {
 	if (Image != NULL && !Drawn && Active) {
 		if (rect == NULL || Intersect(*rect, Area).Is_Valid()) {
-			surface->Blit_From(Area, *Image, Image->Get_Rect());
+			Put_Up(*surface);
 		}
 	}
 }
@@ -1465,7 +1466,28 @@ void MSPCXAnim::Redraw(Surface * surface, const Rect * rect)
 void MSPCXAnim::Restore(const Rect & rect)
 {
 	if (Image != NULL && Active) {
-		TargetSurface->Blit_From(Area, *Image, Image->Get_Rect());
+		Put_Up(*TargetSurface);
+	}
+}
+
+
+/// <summary>
+/// Tells the anim what the lettering painted into its picture says, so the lettering can be
+/// drawn in a scalable face when the menu is enlarged.
+/// </summary>
+/// <param name="text">The lettering, a line of it after the other, or NULL for none.</param>
+void MSPCXAnim::Set_Label(char const * text)
+{
+	Label = (text != NULL) ? text : "";
+}
+
+
+void MSPCXAnim::Put_Up(Surface & surface)
+{
+	if (Label.empty()) {
+		surface.Blit_From(Area, *Image, Image->Get_Rect());
+	} else {
+		Sharp_Text_Draw_Picture(surface, Area, *Image, Label.c_str());
 	}
 }
 

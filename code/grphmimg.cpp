@@ -16,6 +16,31 @@
 #include "ini.h"
 #include "msanim.h"
 #include "mschoice.h"
+#include "newmenu.h"
+
+
+/*
+ * The pictures of the stock menus have their lettering painted in. Each selection's wording
+ * is listed here so the lettering can be drawn in a scalable face. A picture that says
+ * something else, as in another language, is drawn as it is.
+ */
+static char const * Stock_Label(int id)
+{
+	switch (id) {
+		case NSEL_EXIT:				return("Exit");
+		case NSEL_START_NEW_GAME:	return("New Campaign");
+		case NSEL_LOAD_MISSION:		return("Load Mission");
+		case NSEL_LAN:				return("Lan");
+		case NSEL_INTERNET:			return("Internet");
+		case NSEL_SERIAL_MODEM:		return("Serial / Modem");
+		case NSEL_SKIRMISH:			return("Skirmish");
+		case NSEL_WDT:				return("World Domination Tour");
+		case NSEL_OPTIONS:			return("Options");
+		case NSEL_INTRO:			return("Intro\nSneak Peek");
+		case GMENU_BACK:			return("<< Back");
+		default:					return(NULL);
+	}
+}
 
 
 /// <summary>
@@ -99,23 +124,29 @@ GraphicMenuImageItem::GraphicMenuImageItem(int id, MSEngine & engine, Point2D co
 	strncpy(SelectVQ, select_vq != NULL ? select_vq : "", sizeof(SelectVQ));
 
 	if (strlen(highlight_image)) {
-		HighlightImage = new MSPCXAnim(highlight_image, engine.Get_Anims(), origin, true);
+		MSPCXAnim * picture = new MSPCXAnim(highlight_image, engine.Get_Anims(), origin, true);
+		HighlightImage = picture;
 		if (HighlightImage != NULL) {
+			picture->Set_Label(Stock_Label(id));
 			HighlightImage->Set_Active(false);
 			engine.Add_Animation(HighlightImage);
 		}
 	}
 
 	if (strlen(image)) {
-		Image = new MSPCXAnim(image, engine.Get_Anims(), origin, true);
+		MSPCXAnim * picture = new MSPCXAnim(image, engine.Get_Anims(), origin, true);
+		Image = picture;
 		if (Image != NULL) {
+			picture->Set_Label(Stock_Label(id));
 			engine.Add_Animation(Image);
 		}
 	}
 
 	if (strlen(disabled_image)) {
-		DisabledImage = new MSPCXAnim(disabled_image, engine.Get_Anims(), origin, true);
+		MSPCXAnim * picture = new MSPCXAnim(disabled_image, engine.Get_Anims(), origin, true);
+		DisabledImage = picture;
 		if (DisabledImage != NULL) {
+			picture->Set_Label(Stock_Label(id));
 			DisabledImage->Set_Active(false);
 			engine.Add_Animation(DisabledImage);
 		}

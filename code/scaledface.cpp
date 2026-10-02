@@ -32,20 +32,29 @@ static char const * const SYSTEM_FACES[] = {
 };
 static char const * const SHIPPED_FACE = "ui\\Arimo.ttf";
 
+// The title face is only ever the one shipped with the game.
+static char const * const TITLE_FACE = "ui\\texgyreadventor-bold.otf";
+
 // The size the capital is measured at, large enough that rounding does not show.
 static const int MEASURE_SIZE = 256;
 
-static bool _Tried = false;
+struct LoadedFace
+{
+	bool Tried = false;
+	FT_Face Face = NULL;
+	std::vector<unsigned char> Data;
+	int Size = 0;
+	int Width = 0;
+	std::unordered_map<std::uint64_t, ScaledGlyph> Glyphs;
+};
+
+static bool _LibraryTried = false;
 static FT_Library _Library = NULL;
-static FT_Face _Face = NULL;
-static std::vector<unsigned char> _FaceData;
+static LoadedFace _Faces[SCALED_FACE_COUNT];
 static float _CapitalShare = 0.7f;
-static int _Size = 0;
-static int _Width = 0;
-static std::unordered_map<std::uint64_t, ScaledGlyph> _Glyphs;
 
 
-static bool Read_Face(std::string const & path)
+static bool Read_Face(LoadedFace & face, std::string const & path)
 {
 	FILE * file = std::fopen(path.c_str(), "rb");
 	if (file == NULL) {
@@ -56,13 +65,13 @@ static bool Read_Face(std::string const & path)
 	long size = std::ftell(file);
 	std::fseek(file, 0, SEEK_SET);
 
-	_FaceData.resize(size > 0 ? (std::size_t)size : 0);
-	bool read = size > 0 && std::fread(_FaceData.data(), 1, _FaceData.size(), file) == _FaceData.size();
+	face.Data.resize(size > 0 ? (std::size_t)size : 0);
+	bool read = size > 0 && std::fread(face.Data.data(), 1, face.Data.size(), file) == face.Data.size();
 	std::fclose(file);
 
-	if (!read || FT_New_Memory_Face(_Library, _FaceData.data(), (FT_Long)_FaceData.size(), 0, &_Face) != 0) {
-		_Face = NULL;
-		_FaceData.clear();
+	if (!read || FT_New_Memory_Face(_Library, face.Data.data(), (FT_Long)face.Data.size(), 0, &face.Face) != 0) {
+		face.Face = NULL;
+		face.Data.clear();
 		return(false);
 	}
 
@@ -71,65 +80,86 @@ static bool Read_Face(std::string const & path)
 }
 
 
-static bool Set_Size(int size, int width)
+static bool Read_Shipped_Face(LoadedFace & face, char const * name)
 {
-	if (size == _Size && width == _Width) {
-		return(true);
-	}
-	if (FT_Set_Pixel_Sizes(_Face, (FT_UInt)width, (FT_UInt)size) != 0) {
-		_Size = 0;
+	char program[MAX_PATH];
+	unsigned int length = GetModuleFileNameA(NULL, program, MAX_PATH);
+	if (length == 0 || length >= MAX_PATH) {
 		return(false);
 	}
-	_Size = size;
-	_Width = width;
+
+	std::string folder(program);
+	return(Read_Face(face, folder.substr(0, folder.find_last_of('\\') + 1) + name));
+}
+
+
+static bool Set_Size(LoadedFace & face, int size, int width)
+{
+	if (size == face.Size && width == face.Width) {
+		return(true);
+	}
+	if (FT_Set_Pixel_Sizes(face.Face, (FT_UInt)width, (FT_UInt)size) != 0) {
+		face.Size = 0;
+		return(false);
+	}
+	face.Size = size;
+	face.Width = width;
 	return(true);
 }
 
 
 /// <summary>
-/// Loads the scalable face on the first call. The face stays loaded until the game exits.
+/// Loads the face on the first call for it. The face stays loaded until the game exits.
 /// </summary>
-/// <returns>bool; Is there a face to draw with? None of the faces being readable is
+/// <returns>bool; Is there a face to draw with? A face that could not be read is
 /// remembered, so later calls do not try again.</returns>
-bool Scaled_Face_Ready(void)
+bool Scaled_Face_Ready(ScaledFaceType which)
 {
-	if (_Tried) {
-		return(_Face != NULL);
+	LoadedFace & face = _Faces[which];
+	if (face.Tried) {
+		return(face.Face != NULL);
 	}
-	_Tried = true;
+	face.Tried = true;
 
-	if (FT_Init_FreeType(&_Library) != 0) {
-		_Library = NULL;
-		DebugString("Scaled face: FreeType did not start\n");
+	if (!_LibraryTried) {
+		_LibraryTried = true;
+		if (FT_Init_FreeType(&_Library) != 0) {
+			_Library = NULL;
+			DebugString("Scaled face: FreeType did not start\n");
+		}
+	}
+	if (_Library == NULL) {
 		return(false);
+	}
+
+	if (which == SCALED_FACE_TITLE) {
+		if (!Read_Shipped_Face(face, TITLE_FACE)) {
+			DebugString("Scaled face: the title face could not be read\n");
+		}
+		return(face.Face != NULL);
 	}
 
 	char directory[MAX_PATH];
 	unsigned int length = GetWindowsDirectoryA(directory, MAX_PATH);
 	if (length > 0 && length < MAX_PATH) {
 		for (char const * const name : SYSTEM_FACES) {
-			if (Read_Face(std::string(directory) + "\\Fonts\\" + name)) {
+			if (Read_Face(face, std::string(directory) + "\\Fonts\\" + name)) {
 				break;
 			}
 		}
 	}
 
-	if (_Face == NULL) {
-		char program[MAX_PATH];
-		length = GetModuleFileNameA(NULL, program, MAX_PATH);
-		if (length > 0 && length < MAX_PATH) {
-			std::string folder(program);
-			Read_Face(folder.substr(0, folder.find_last_of('\\') + 1) + SHIPPED_FACE);
-		}
+	if (face.Face == NULL) {
+		Read_Shipped_Face(face, SHIPPED_FACE);
 	}
 
-	if (_Face == NULL) {
+	if (face.Face == NULL) {
 		DebugString("Scaled face: no face could be read\n");
 		return(false);
 	}
 
-	if (Set_Size(MEASURE_SIZE, 0) && FT_Load_Char(_Face, 'H', FT_LOAD_NO_BITMAP | FT_LOAD_NO_HINTING) == 0 && _Face->glyph->metrics.height > 0) {
-		_CapitalShare = (float)_Face->glyph->metrics.height / 64.0f / (float)MEASURE_SIZE;
+	if (Set_Size(face, MEASURE_SIZE, 0) && FT_Load_Char(face.Face, 'H', FT_LOAD_NO_BITMAP | FT_LOAD_NO_HINTING) == 0 && face.Face->glyph->metrics.height > 0) {
+		_CapitalShare = (float)face.Face->glyph->metrics.height / 64.0f / (float)MEASURE_SIZE;
 	}
 	return(true);
 }
@@ -145,28 +175,30 @@ int Scaled_Face_Size_For_Capital(int height)
 
 /// <param name="width">The size that sets the character's width, for a face drawn wider or
 /// narrower than it is designed; 0 keeps the designed width.</param>
+/// <param name="which">The face to draw in.</param>
 /// <returns>The character drawn at the size, or NULL when there is no face or the character
 /// cannot be drawn. The glyph stays valid until the game exits.</returns>
-ScaledGlyph const * Scaled_Face_Glyph(char32_t code, int size, int width)
+ScaledGlyph const * Scaled_Face_Glyph(char32_t code, int size, int width, ScaledFaceType which)
 {
-	if (!Scaled_Face_Ready() || size < 1 || size > 0xFFFF || width < 0 || width > 0xFFFF || code > 0x10FFFF) {
+	if (!Scaled_Face_Ready(which) || size < 1 || size > 0xFFFF || width < 0 || width > 0xFFFF || code > 0x10FFFF) {
 		return(NULL);
 	}
 	if (width == size) {
 		width = 0;
 	}
 
+	LoadedFace & face = _Faces[which];
 	std::uint64_t key = ((std::uint64_t)width << 48) | ((std::uint64_t)size << 32) | (std::uint32_t)code;
-	std::unordered_map<std::uint64_t, ScaledGlyph>::const_iterator found = _Glyphs.find(key);
-	if (found != _Glyphs.end()) {
+	std::unordered_map<std::uint64_t, ScaledGlyph>::const_iterator found = face.Glyphs.find(key);
+	if (found != face.Glyphs.end()) {
 		return(&found->second);
 	}
 
-	if (!Set_Size(size, width) || FT_Load_Char(_Face, (FT_ULong)code, FT_LOAD_RENDER) != 0) {
+	if (!Set_Size(face, size, width) || FT_Load_Char(face.Face, (FT_ULong)code, FT_LOAD_RENDER) != 0) {
 		return(NULL);
 	}
 
-	FT_GlyphSlot slot = _Face->glyph;
+	FT_GlyphSlot slot = face.Face->glyph;
 	if (slot->bitmap.pixel_mode != FT_PIXEL_MODE_GRAY) {
 		return(NULL);
 	}
@@ -183,7 +215,7 @@ ScaledGlyph const * Scaled_Face_Glyph(char32_t code, int size, int width)
 		std::copy(from, from + glyph.Width, glyph.Coverage.begin() + (std::size_t)row * glyph.Width);
 	}
 
-	return(&_Glyphs.emplace(key, std::move(glyph)).first->second);
+	return(&face.Glyphs.emplace(key, std::move(glyph)).first->second);
 }
 
 

@@ -26,10 +26,12 @@
 #include "wwfont.h"
 
 #include <algorithm>
+#include <cfloat>
 #include <climits>
 #include <cmath>
 #include <cstring>
 #include <map>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -57,6 +59,77 @@ static const int LIT_SHARE = 40;
 
 // The pen position of a shape character whose word has not been laid out.
 static const int UNPLACED = INT_MIN;
+
+// A changed pixel of a lettered picture can be the letters' color from this much light, as
+// the sum of its red, green and blue out of 255 each.
+static const int LETTER_LIGHT = 150;
+
+// How far a pixel may be from the letters' color, as the same kind of sum, and still be a
+// whole pixel of a letter.
+static const int LETTER_SPREAD = 24;
+
+// A pixel beside a letter is the letters' shadow up to this much red, green or blue.
+static const int SHADOW_LIGHT = 40;
+
+// How far from its letters a shadow is looked for, in pixels.
+static const int SHADOW_REACH = 3;
+
+// Over how many pixels a picture's glow fades out toward the picture's edge.
+static const int GLOW_FADE = 3;
+
+// The size the title face is measured at to compare it with a picture's lettering.
+static const int LABEL_MEASURE_SIZE = 128;
+
+// How narrow and how wide the title face is drawn to match a picture's lettering, in percent
+// of its design. Lettering that needs more is taken to say something else.
+static const int LABEL_NARROWEST = 90;
+static const int LABEL_WIDEST = 120;
+
+// One line of the lettering painted into a picture.
+struct LabelLine
+{
+	std::string Text;
+
+	// The box the bitmap letters fill, in picture pixels from the picture's top left corner.
+	float Left = 0.0f;
+	float Top = 0.0f;
+	float Right = 0.0f;
+	float Bottom = 0.0f;
+};
+
+// What is known of the lettering painted into a picture.
+struct PictureLabel
+{
+	int Width = 0;
+	int Height = 0;
+	std::vector<LabelLine> Lines;
+	unsigned short Color = 0;
+
+	// How far right and down of the letters their black shadow stands, in picture pixels.
+	// Both are zero for lettering without one.
+	int ShadowX = 0;
+	int ShadowY = 0;
+
+	// The glow around the letters: its color, and how much of it each picture pixel shows.
+	unsigned short GlowColor = 0;
+	std::vector<unsigned char> Glow;
+
+	// The glow at the size it was last drawn at.
+	float ShownScale = 0.0f;
+	int ShownWidth = 0;
+	int ShownHeight = 0;
+	std::vector<unsigned char> Shown;
+};
+
+// Where the ink of a line of text stands: from the pen's start to its first column, from the
+// baseline up to its first row, and its size.
+struct InkBox
+{
+	int Left = 0;
+	int Top = 0;
+	int Width = 0;
+	int Height = 0;
+};
 
 // What is known of a shape set's letters: the lit rows and columns of its capital H, from
 // the shape's own origin, and how far each of the sample letters it has moves the pen.
@@ -105,6 +178,10 @@ struct TextRecord
 	// Where the pen stands for this character in the enlarged picture once its word is laid
 	// out.
 	int Pen = UNPLACED;
+
+	// The lettering of a picture, and where the picture's top left corner stands.
+	std::shared_ptr<PictureLabel> Label;
+	Point2D LabelOrigin;
 	Rect Bounds;
 	Rect Clip;
 	std::vector<TextLine> Lines;
@@ -487,7 +564,7 @@ static bool Is_Blocked(TextCanvas const & canvas, int x, int y)
 
 
 // The surfaces hold 16 bit pixels of five bits of red, six of green and five of blue.
-static void Draw_Line(TextCanvas const & canvas, char const * text, int size, int x, int baseline, unsigned short color)
+static void Draw_Line(TextCanvas const & canvas, char const * text, int size, int x, int baseline, unsigned short color, int wide = 0, ScaledFaceType face = SCALED_FACE_TEXT)
 {
 	unsigned char * buffer = canvas.Buffer;
 	int stride = canvas.Stride;
@@ -500,7 +577,7 @@ static void Draw_Line(TextCanvas const & canvas, char const * text, int size, in
 	int pen = x << 6;
 
 	while (*text != '\0') {
-		ScaledGlyph const * glyph = Scaled_Face_Glyph(UTF8::Decode(text), size);
+		ScaledGlyph const * glyph = Scaled_Face_Glyph(UTF8::Decode(text), size, wide, face);
 		if (glyph == NULL) {
 			continue;
 		}
@@ -712,6 +789,173 @@ static void Draw_Shape_Record(TextCanvas const & canvas, TextRecord const & reco
 }
 
 
+static bool Measure_Ink(char const * text, int size, int wide, ScaledFaceType face, InkBox & box)
+{
+	int pen = 0;
+	int left = INT_MAX;
+	int right = INT_MIN;
+	int top = INT_MIN;
+	int bottom = INT_MAX;
+
+	while (*text != '\0') {
+		ScaledGlyph const * glyph = Scaled_Face_Glyph(UTF8::Decode(text), size, wide, face);
+		if (glyph == nullptr) {
+			continue;
+		}
+		if (glyph->Width > 0 && glyph->Height > 0) {
+			int start = ((pen + 32) >> 6) + glyph->Left;
+			left = std::min(left, start);
+			right = std::max(right, start + glyph->Width);
+			top = std::max(top, glyph->Top);
+			bottom = std::min(bottom, glyph->Top - glyph->Height);
+		}
+		pen += glyph->Advance;
+	}
+	if (right <= left || top <= bottom) {
+		return(false);
+	}
+
+	box.Left = left;
+	box.Top = top;
+	box.Width = right - left;
+	box.Height = top - bottom;
+	return(true);
+}
+
+
+/*
+ * A line of a picture's lettering is drawn in the title face at the size whose ink is as
+ * tall as the bitmap letters', widened or narrowed until it is as wide as theirs.
+ */
+static bool Fit_Label_Line(LabelLine const & line, float scale, int & size, int & wide, InkBox & box)
+{
+	char const * text = line.Text.c_str();
+	float tall = (line.Bottom - line.Top) * scale;
+	float broad = (line.Right - line.Left) * scale;
+
+	InkBox measured;
+	if (!Measure_Ink(text, LABEL_MEASURE_SIZE, 0, SCALED_FACE_TITLE, measured)) {
+		return(false);
+	}
+
+	// The ink does not grow evenly with the size, so the sizes beside the estimate are tried.
+	int estimate = std::max((int)std::lround((float)LABEL_MEASURE_SIZE * tall / (float)measured.Height), SMALLEST_SIZE);
+	float nearest = FLT_MAX;
+	size = estimate;
+	for (int tried = std::max(estimate - 1, 1); tried <= estimate + 1; tried++) {
+		if (Measure_Ink(text, tried, 0, SCALED_FACE_TITLE, measured) && std::fabs((float)measured.Height - tall) < nearest) {
+			nearest = std::fabs((float)measured.Height - tall);
+			size = tried;
+		}
+	}
+	if (!Measure_Ink(text, size, 0, SCALED_FACE_TITLE, measured)) {
+		return(false);
+	}
+
+	wide = std::clamp((int)std::lround((float)size * broad / (float)measured.Width), size * LABEL_NARROWEST / 100, size * LABEL_WIDEST / 100);
+	return(Measure_Ink(text, size, wide, SCALED_FACE_TITLE, box));
+}
+
+
+static void Show_Glow(PictureLabel & label, float scale)
+{
+	if (label.ShownScale == scale) {
+		return;
+	}
+	label.ShownScale = scale;
+	label.ShownWidth = Enlarged(label.Width, scale);
+	label.ShownHeight = Enlarged(label.Height, scale);
+	label.Shown.assign((std::size_t)label.ShownWidth * label.ShownHeight, 0);
+	if (label.Glow.empty()) {
+		return;
+	}
+
+	// Each shown pixel takes its share of the four picture pixels around its middle.
+	std::vector<int> column(label.ShownWidth);
+	std::vector<int> share(label.ShownWidth);
+	for (int x = 0; x < label.ShownWidth; x++) {
+		float place = std::clamp(((float)x + 0.5f) / scale - 0.5f, 0.0f, (float)(label.Width - 1));
+		column[x] = std::min((int)place, std::max(label.Width - 2, 0));
+		share[x] = (int)((place - (float)column[x]) * 256.0f);
+	}
+
+	int beside = (label.Width > 1) ? 1 : 0;
+	for (int y = 0; y < label.ShownHeight; y++) {
+		float place = std::clamp(((float)y + 0.5f) / scale - 0.5f, 0.0f, (float)(label.Height - 1));
+		int row = std::min((int)place, std::max(label.Height - 2, 0));
+		int lower = (int)((place - (float)row) * 256.0f);
+		unsigned char const * above = label.Glow.data() + (std::size_t)row * label.Width;
+		unsigned char const * below = above + ((label.Height > 1) ? label.Width : 0);
+		unsigned char * out = label.Shown.data() + (std::size_t)y * label.ShownWidth;
+
+		for (int x = 0; x < label.ShownWidth; x++) {
+			int first = above[column[x]] * (256 - share[x]) + above[column[x] + beside] * share[x];
+			int second = below[column[x]] * (256 - share[x]) + below[column[x] + beside] * share[x];
+			out[x] = (unsigned char)((first * (256 - lower) + second * lower) >> 16);
+		}
+	}
+}
+
+
+static void Draw_Label(TextCanvas const & whole, TextRecord const & record, Rect const & sourcerect, Point2D const & destorigin, float scale)
+{
+	PictureLabel & label = *record.Label;
+	int left = destorigin.X + Enlarged(record.LabelOrigin.X - sourcerect.X, scale);
+	int top = destorigin.Y + Enlarged(record.LabelOrigin.Y - sourcerect.Y, scale);
+
+	// A record can hold a part of its picture only, and draws that part alone.
+	TextCanvas canvas = whole;
+	int right = destorigin.X + Enlarged(record.Bounds.X + record.Bounds.Width - sourcerect.X, scale);
+	int bottom = destorigin.Y + Enlarged(record.Bounds.Y + record.Bounds.Height - sourcerect.Y, scale);
+	canvas.Clip = Intersect(whole.Clip, Rect(whole.Origin.X, whole.Origin.Y, right - whole.Origin.X, bottom - whole.Origin.Y));
+
+	Show_Glow(label, scale);
+	Rect area = Intersect(canvas.Clip, Rect(left, top, label.ShownWidth, label.ShownHeight));
+	int red = label.GlowColor >> 11;
+	int green = (label.GlowColor >> 5) & 63;
+	int blue = label.GlowColor & 31;
+
+	for (int y = area.Y; y < area.Y + area.Height; y++) {
+		unsigned char const * glow = label.Shown.data() + (std::size_t)(y - top) * label.ShownWidth + (area.X - left);
+		unsigned short * out = (unsigned short *)(canvas.Buffer + (std::ptrdiff_t)y * canvas.Stride) + area.X;
+
+		for (int x = area.X; x < area.X + area.Width; x++, glow++, out++) {
+			int amount = *glow;
+			if (amount == 0 || (record.IsCovered && Is_Blocked(canvas, x, y))) {
+				continue;
+			}
+			int under = *out;
+			int r = under >> 11;
+			int g = (under >> 5) & 63;
+			int b = under & 31;
+			r += (red - r) * amount / 255;
+			g += (green - g) * amount / 255;
+			b += (blue - b) * amount / 255;
+			*out = (unsigned short)((r << 11) | (g << 5) | b);
+		}
+	}
+
+	for (LabelLine const & line : label.Lines) {
+		int size;
+		int wide;
+		InkBox box;
+		if (!Fit_Label_Line(line, scale, size, wide, box)) {
+			continue;
+		}
+
+		int x = left + (int)std::lround(line.Left * scale) - box.Left;
+		int baseline = top + (int)std::lround(line.Top * scale) + box.Top;
+		if (label.ShadowX != 0 || label.ShadowY != 0) {
+			// The bitmap letters' soft edges lie over the nearest half pixel of their shadow.
+			int across = (int)std::lround(std::max((float)label.ShadowX - 0.5f, 0.0f) * scale);
+			int down = (int)std::lround(std::max((float)label.ShadowY - 0.5f, 0.0f) * scale);
+			Draw_Line(canvas, line.Text.c_str(), size, x + across, baseline + down, 0, wide, SCALED_FACE_TITLE);
+		}
+		Draw_Line(canvas, line.Text.c_str(), size, x, baseline, label.Color, wide, SCALED_FACE_TITLE);
+	}
+}
+
+
 static void Draw_Record(TextRecord const & record, Rect const & sourcerect, unsigned char * buffer, int stride, Rect const & destclip, Point2D const & destorigin, float scale)
 {
 	Rect shown = Intersect(record.Clip, sourcerect);
@@ -732,6 +976,10 @@ static void Draw_Record(TextRecord const & record, Rect const & sourcerect, unsi
 
 	if (record.GlyphCode != 0) {
 		Draw_Shape_Record(canvas, record, sourcerect, destorigin, scale);
+		return;
+	}
+	if (record.Label != nullptr) {
+		Draw_Label(canvas, record, sourcerect, destorigin, scale);
 		return;
 	}
 
@@ -947,6 +1195,8 @@ void Sharp_Text_Copy(Surface const & source, Rect const & sourcerect, Surface & 
 			record.Body.X += dx;
 			record.Body.Y += dy;
 			record.CapTop += dy;
+			record.LabelOrigin.X += dx;
+			record.LabelOrigin.Y += dy;
 			for (TextLine & line : record.Lines) {
 				line.X += dx;
 				line.Y += dy;
@@ -1147,6 +1397,402 @@ void Sharp_Text_Draw_Glyph(Surface & surface, ConvertClass & converter, ShapeSet
 		return;
 	}
 
+	Records_For(surface)->push_back(std::move(record));
+}
+
+
+static void To_Colors(std::vector<unsigned short> const & pixels, std::vector<float> & colors)
+{
+	colors.resize(pixels.size() * 3);
+	for (std::size_t pixel = 0; pixel < pixels.size(); pixel++) {
+		unsigned short color = pixels[pixel];
+		colors[pixel * 3] = (float)((color >> 11) * 255 / 31);
+		colors[pixel * 3 + 1] = (float)(((color >> 5) & 63) * 255 / 63);
+		colors[pixel * 3 + 2] = (float)((color & 31) * 255 / 31);
+	}
+}
+
+
+// Adds to a mask every pixel within the given number of steps of one it holds.
+static void Grow(std::vector<unsigned char> & mask, int width, int height, int steps)
+{
+	std::vector<unsigned char> before;
+
+	for (int step = 0; step < steps; step++) {
+		before = mask;
+		for (int y = 0; y < height; y++) {
+			for (int x = 0; x < width; x++) {
+				if (before[(std::size_t)y * width + x]) {
+					continue;
+				}
+				for (int down = std::max(y - 1, 0); down <= std::min(y + 1, height - 1); down++) {
+					for (int across = std::max(x - 1, 0); across <= std::min(x + 1, width - 1); across++) {
+						if (before[(std::size_t)down * width + across]) {
+							mask[(std::size_t)y * width + x] = 1;
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+
+// Averages every value with its neighbors, weighed by a bell curve of the given width.
+static void Soften(std::vector<float> & field, int width, int height, float sigma)
+{
+	int reach = std::max((int)(sigma * 3.0f + 0.5f), 1);
+	std::vector<float> weights(reach * 2 + 1);
+	float total = 0.0f;
+	for (int tap = -reach; tap <= reach; tap++) {
+		weights[tap + reach] = std::exp(-0.5f * (float)(tap * tap) / (sigma * sigma));
+		total += weights[tap + reach];
+	}
+	for (float & weight : weights) {
+		weight /= total;
+	}
+
+	std::vector<float> pass(field.size());
+	for (int y = 0; y < height; y++) {
+		for (int x = 0; x < width; x++) {
+			float sum = 0.0f;
+			for (int tap = -reach; tap <= reach; tap++) {
+				sum += field[(std::size_t)y * width + std::clamp(x + tap, 0, width - 1)] * weights[tap + reach];
+			}
+			pass[(std::size_t)y * width + x] = sum;
+		}
+	}
+	for (int y = 0; y < height; y++) {
+		for (int x = 0; x < width; x++) {
+			float sum = 0.0f;
+			for (int tap = -reach; tap <= reach; tap++) {
+				sum += pass[(std::size_t)std::clamp(y + tap, 0, height - 1) * width + x] * weights[tap + reach];
+			}
+			field[(std::size_t)y * width + x] = sum;
+		}
+	}
+}
+
+
+/*
+ * A lettered picture is the background under it with three things painted on: a soft glow
+ * of one color, the letters' black shadow, and the letters in one color. The glow comes
+ * back as its color and how much of it each pixel shows, with what the letters and their
+ * shadow hide filled in from around them, so letters of the scalable face can stand on it.
+ */
+static std::shared_ptr<PictureLabel> Read_Label(std::vector<unsigned short> const & clean, std::vector<unsigned short> const & after, int width, int height, char const * text)
+{
+	std::size_t count = (std::size_t)width * height;
+	std::vector<float> shown;
+	std::vector<float> under;
+	To_Colors(after, shown);
+	To_Colors(clean, under);
+
+	// The letters are the most common color among the changed pixels that is not dark.
+	std::unordered_map<unsigned short, int> tally;
+	for (std::size_t pixel = 0; pixel < count; pixel++) {
+		if (after[pixel] != clean[pixel] && shown[pixel * 3] + shown[pixel * 3 + 1] + shown[pixel * 3 + 2] > (float)LETTER_LIGHT) {
+			tally[after[pixel]]++;
+		}
+	}
+	unsigned short color = 0;
+	int most = 0;
+	for (std::pair<unsigned short const, int> const & entry : tally) {
+		if (entry.second > most || (entry.second == most && entry.first > color)) {
+			most = entry.second;
+			color = entry.first;
+		}
+	}
+	if (most == 0) {
+		return(nullptr);
+	}
+
+	std::vector<unsigned short> one(1, color);
+	std::vector<float> letter;
+	To_Colors(one, letter);
+
+	std::vector<unsigned char> letters(count, 0);
+	for (std::size_t pixel = 0; pixel < count; pixel++) {
+		float spread = std::fabs(shown[pixel * 3] - letter[0]) + std::fabs(shown[pixel * 3 + 1] - letter[1]) + std::fabs(shown[pixel * 3 + 2] - letter[2]);
+		letters[pixel] = after[pixel] != clean[pixel] && spread <= (float)LETTER_SPREAD;
+	}
+
+	// The rows that hold letters, in runs, are the lines of the lettering.
+	std::shared_ptr<PictureLabel> label = std::make_shared<PictureLabel>();
+	label->Width = width;
+	label->Height = height;
+	label->Color = color;
+
+	std::vector<Rect> boxes;
+	bool open = false;
+	for (int y = 0; y < height; y++) {
+		int first = width;
+		int last = -1;
+		for (int x = 0; x < width; x++) {
+			if (letters[(std::size_t)y * width + x]) {
+				first = std::min(first, x);
+				last = std::max(last, x);
+			}
+		}
+		if (last < 0) {
+			open = false;
+			continue;
+		}
+		Rect row(first, y, last - first + 1, 1);
+		if (open) {
+			boxes.back() = Union(boxes.back(), row);
+		} else {
+			boxes.push_back(row);
+		}
+		open = true;
+	}
+
+	char const * cursor = text;
+	for (;;) {
+		char const * end = std::strchr(cursor, '\n');
+		LabelLine line;
+		line.Text = (end != nullptr) ? std::string(cursor, end) : std::string(cursor);
+		label->Lines.push_back(line);
+		if (end == nullptr) {
+			break;
+		}
+		cursor = end + 1;
+	}
+	if (boxes.size() != label->Lines.size()) {
+		return(nullptr);
+	}
+
+	// The shadow is a copy of the letters, moved right and down and painted black.
+	int best = 0;
+	for (int down = 0; down <= SHADOW_REACH; down++) {
+		for (int across = 0; across <= SHADOW_REACH; across++) {
+			int score = 0;
+			for (int y = down; y < height; y++) {
+				for (int x = across; x < width; x++) {
+					std::size_t pixel = (std::size_t)y * width + x;
+					if (letters[pixel - (std::size_t)down * width - across] && !letters[pixel]) {
+						bool dark = std::max({shown[pixel * 3], shown[pixel * 3 + 1], shown[pixel * 3 + 2]}) <= (float)SHADOW_LIGHT;
+						score += dark ? 1 : -1;
+					}
+				}
+			}
+			if (score > best) {
+				best = score;
+				label->ShadowX = across;
+				label->ShadowY = down;
+			}
+		}
+	}
+
+	/*
+	 * The glow is read from the changed pixels that are neither letter nor shadow. The
+	 * shadow is taken to be every dark pixel near a letter, and the soft edges of both add
+	 * one more pixel around them.
+	 */
+	std::vector<unsigned char> solid = letters;
+	Grow(solid, width, height, SHADOW_REACH + 1);
+	for (std::size_t pixel = 0; pixel < count; pixel++) {
+		bool dark = std::max({shown[pixel * 3], shown[pixel * 3 + 1], shown[pixel * 3 + 2]}) <= (float)SHADOW_LIGHT;
+		solid[pixel] = letters[pixel] || (solid[pixel] && dark);
+	}
+	Grow(solid, width, height, 1);
+
+	// The glow is taken to be one color, mixed into each pixel's background by its own share.
+	float glow[3] = {0.0f, 0.0f, 0.0f};
+	int glowing = 0;
+	for (std::size_t pixel = 0; pixel < count; pixel++) {
+		if (after[pixel] != clean[pixel] && !solid[pixel]) {
+			for (int part = 0; part < 3; part++) {
+				glow[part] += shown[pixel * 3 + part];
+			}
+			glowing++;
+		}
+	}
+
+	auto share_of = [&](std::size_t pixel) -> float {
+		float along = 0.0f;
+		float length = 0.0f;
+		for (int part = 0; part < 3; part++) {
+			float reach = glow[part] - under[pixel * 3 + part];
+			along += (shown[pixel * 3 + part] - under[pixel * 3 + part]) * reach;
+			length += reach * reach;
+		}
+		return(std::clamp(along / std::max(length, 1.0f), 0.0f, 1.0f));
+	};
+
+	if (glowing > 0) {
+		for (int part = 0; part < 3; part++) {
+			glow[part] /= (float)glowing;
+		}
+		for (int round = 0; round < 40; round++) {
+			float sum[3] = {0.0f, 0.0f, 0.0f};
+			float weight = 0.0f;
+			for (std::size_t pixel = 0; pixel < count; pixel++) {
+				if (after[pixel] == clean[pixel] || solid[pixel]) {
+					continue;
+				}
+				float share = share_of(pixel);
+				for (int part = 0; part < 3; part++) {
+					sum[part] += share * (shown[pixel * 3 + part] - (1.0f - share) * under[pixel * 3 + part]);
+				}
+				weight += share * share;
+			}
+			if (weight < 0.001f) {
+				break;
+			}
+			for (int part = 0; part < 3; part++) {
+				glow[part] = std::clamp(sum[part] / weight, 0.0f, 255.0f);
+			}
+		}
+
+		/*
+		 * A pixel says more about the glow the further its background is from the glow's
+		 * color. What the letters and their shadow cover says nothing, and is filled in
+		 * from a wider neighborhood.
+		 */
+		std::vector<float> shares(count, 0.0f);
+		std::vector<float> trust(count, 0.0f);
+		for (std::size_t pixel = 0; pixel < count; pixel++) {
+			if (solid[pixel]) {
+				continue;
+			}
+			for (int part = 0; part < 3; part++) {
+				float reach = glow[part] - under[pixel * 3 + part];
+				trust[pixel] += reach * reach;
+			}
+			shares[pixel] = (after[pixel] != clean[pixel]) ? share_of(pixel) * trust[pixel] : 0.0f;
+		}
+		std::vector<float> wideshares = shares;
+		std::vector<float> widetrust = trust;
+		Soften(shares, width, height, 1.0f);
+		Soften(trust, width, height, 1.0f);
+		Soften(wideshares, width, height, 2.5f);
+		Soften(widetrust, width, height, 2.5f);
+
+		label->Glow.resize(count);
+		for (std::size_t pixel = 0; pixel < count; pixel++) {
+			float share = 0.0f;
+			if (!solid[pixel] && trust[pixel] > 1.0f) {
+				share = shares[pixel] / trust[pixel];
+			} else if (widetrust[pixel] > 0.01f) {
+				share = wideshares[pixel] / widetrust[pixel];
+			}
+
+			// A glow that reaches the picture's edge is cut off there, so it is faded out
+			// over the last pixels before the edge.
+			int x = (int)(pixel % (std::size_t)width);
+			int y = (int)(pixel / (std::size_t)width);
+			int inside = std::min({x, y, width - 1 - x, height - 1 - y});
+			share *= std::min((float)(inside + 1) / (float)GLOW_FADE, 1.0f);
+			label->Glow[pixel] = (unsigned char)std::lround(std::clamp(share, 0.0f, 1.0f) * 255.0f);
+		}
+		label->GlowColor = (unsigned short)(((int)std::lround(glow[0] * 31.0f / 255.0f) << 11) | ((int)std::lround(glow[1] * 63.0f / 255.0f) << 5) | (int)std::lround(glow[2] * 31.0f / 255.0f));
+	}
+
+	/*
+	 * The whole pixels of a line's letters give its box. The letters' soft edges reach on
+	 * into the pixels around it by the share of the letters' color those hold, between the
+	 * glow's color and the letters'.
+	 */
+	auto cover_of = [&](int x, int y) -> float {
+		if (x < 0 || y < 0 || x >= width || y >= height) {
+			return(0.0f);
+		}
+		std::size_t pixel = (std::size_t)y * width + x;
+		float along = 0.0f;
+		float length = 0.0f;
+		for (int part = 0; part < 3; part++) {
+			float reach = letter[part] - glow[part];
+			along += (shown[pixel * 3 + part] - glow[part]) * reach;
+			length += reach * reach;
+		}
+		return((after[pixel] != clean[pixel]) ? std::clamp(along / std::max(length, 1.0f), 0.0f, 1.0f) : 0.0f);
+	};
+
+	for (std::size_t index = 0; index < boxes.size(); index++) {
+		Rect const & box = boxes[index];
+		LabelLine & line = label->Lines[index];
+		float left = 0.0f;
+		float right = 0.0f;
+		float top = 0.0f;
+		float bottom = 0.0f;
+		for (int y = box.Y; y < box.Y + box.Height; y++) {
+			left = std::max(left, cover_of(box.X - 1, y));
+			right = std::max(right, cover_of(box.X + box.Width, y));
+		}
+		for (int x = box.X; x < box.X + box.Width; x++) {
+			top = std::max(top, cover_of(x, box.Y - 1));
+			bottom = std::max(bottom, cover_of(x, box.Y + box.Height));
+		}
+		line.Left = (float)box.X - left;
+		line.Right = (float)(box.X + box.Width) + right;
+		line.Top = (float)box.Y - top;
+		line.Bottom = (float)(box.Y + box.Height) + bottom;
+
+		// Lettering whose shape the title face cannot take says something else than the text.
+		InkBox ink;
+		if (!Measure_Ink(line.Text.c_str(), LABEL_MEASURE_SIZE, 0, SCALED_FACE_TITLE, ink)) {
+			return(nullptr);
+		}
+		float stretch = (line.Right - line.Left) / (line.Bottom - line.Top) * (float)ink.Height / (float)ink.Width;
+		if (stretch * 100.0f < (float)LABEL_NARROWEST || stretch * 100.0f > (float)LABEL_WIDEST) {
+			return(nullptr);
+		}
+	}
+
+	return(label);
+}
+
+
+/// <summary>
+/// Draws a picture that has lettering painted into it and remembers the lettering, so it is
+/// drawn in the title face over the picture's own glow when the surface is enlarged. The
+/// picture is drawn as it is when the lettering cannot be made out as the text given.
+/// </summary>
+/// <param name="area">Where the picture goes, at its own size.</param>
+/// <param name="text">What the lettering says, a line of it after the other.</param>
+void Sharp_Text_Draw_Picture(Surface & surface, Rect const & area, Surface const & picture, char const * text)
+{
+	bool wanted = text != nullptr && *text != '\0' && Sharp_Text_Wanted(surface) && Frame_Scale() > 1 && Scaled_Face_Ready(SCALED_FACE_TITLE);
+	wanted = wanted && Intersect(area, surface.Get_Rect()) == area && picture.Get_Width() == area.Width && picture.Get_Height() == area.Height;
+
+	TextRecord record;
+	if (wanted) {
+		wanted = Copy_Out(surface, area, record.Clean);
+	}
+	if (wanted) {
+
+		// What an earlier text or picture left here is not the background; that one holds it.
+		std::vector<TextRecord> & records = *Records_For(surface);
+		for (std::vector<TextRecord>::reverse_iterator other = records.rbegin(); other != records.rend(); ++other) {
+			Rect shared = Intersect(area, other->Bounds);
+			if (!shared.Is_Valid() || other->Clean.size() != other->After.size()) {
+				continue;
+			}
+			for (int y = shared.Y; y < shared.Y + shared.Height; y++) {
+				for (int x = shared.X; x < shared.X + shared.Width; x++) {
+					std::size_t pixel = (std::size_t)(y - area.Y) * area.Width + x - area.X;
+					std::size_t previous = (std::size_t)(y - other->Bounds.Y) * other->Bounds.Width + x - other->Bounds.X;
+					if (record.Clean[pixel] == other->After[previous]) {
+						record.Clean[pixel] = other->Clean[previous];
+					}
+				}
+			}
+		}
+	}
+
+	surface.Blit_From(area, picture, picture.Get_Rect());
+	if (!wanted || !Copy_Out(surface, area, record.After) || record.After == record.Clean) {
+		return;
+	}
+
+	record.Label = Read_Label(record.Clean, record.After, area.Width, area.Height, text);
+	if (record.Label == nullptr) {
+		return;
+	}
+	record.Bounds = area;
+	record.Clip = surface.Get_Rect();
+	record.LabelOrigin = area.Top_Left();
 	Records_For(surface)->push_back(std::move(record));
 }
 

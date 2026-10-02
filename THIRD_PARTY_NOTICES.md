@@ -28,6 +28,7 @@ remains under its own license and copyright notices.
 | [yuv2rgb](https://github.com/descampsa/yuv2rgb)                    | YUV conversion bundled with SDL           | BSD 3-Clause |
 | [fdlibm](https://www.netlib.org/fdlibm/)                           | Math routines bundled with SDL            | fdlibm       |
 | [Arimo](https://github.com/googlefonts/arimo)                      | The UI font                               | OFL-1.1      |
+| [TeX Gyre Adventor](https://www.gust.org.pl/projects/e-foundry/tex-gyre/adventor) | The font of the main menus' lettering | GUST Font License |
 
 The source checkout keeps the license texts under `thirdparty/`. Binary
 packages reproduce the license texts for the components used by OpenTS under

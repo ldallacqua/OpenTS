@@ -1,6 +1,6 @@
 ---
 title: UI files
-summary: Holds the RmlUi documents, style sheets, dialog kit and font that draw the game's screens, in a `ui` directory beside the executable.
+summary: Holds the RmlUi documents, style sheets, dialog kit and fonts that draw the game's screens, in a `ui` directory beside the executable.
 category: interface-controls
 keys: []
 related:
@@ -22,6 +22,7 @@ The `ui` directory sits beside the executable and holds everything the screens a
 | `glow.png` | The glow the template draws around a screen |
 | `cursor.png` | The arrow pointer shown over the screens, with its tip at the top-left pixel. [`SystemCursor`](/keys/systemcursor/) replaces it with the Windows pointer |
 | `Arimo.ttf` | The face a font family uses when its own face is missing, with its license in `OFL.txt` |
+| `texgyreadventor-bold.otf` | The face the main menus' lettering is drawn in under [scalable text](/using/scalable-text/), with its license in `GUST-FONT-LICENSE.txt` |
 
 ## The dialog kit
 
