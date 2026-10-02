@@ -1321,7 +1321,7 @@ void ScoreFontClass::Print_Char(Surface *surf, char32_t code, int x, int y, int 
 				AudioEngine.Play_Sample(snd, AUDIO_GROUP_SFX, 128.0f / 255.0f, 255);
 			}
 		}
-		Sharp_Text_Draw_Glyph(*surf, *Drawer, *ShapePtr, frame + v, frame + 2, code, Point2D(x - ShapePtr->Get_Rect(frame + 2).X, y));
+		Sharp_Text_Draw_Glyph(*surf, *Drawer, *ShapePtr, frame + v, frame + 2, Glyph_Frame(U'H') + 2, code, Point2D(x - ShapePtr->Get_Rect(frame + 2).X, y));
 	}
 }
 
@@ -1339,7 +1339,7 @@ void ScoreFontClass::Print_String(Surface *surf, const char * string, int x, int
 		if (code != 32) {
 			int frame = Glyph_Frame(code);
 
-			Sharp_Text_Draw_Glyph(*surf, *Drawer, *ShapePtr, frame + brightness_frame, frame + 2, code, Point2D(x - ShapePtr->Get_Rect(frame + 2).X, y));
+			Sharp_Text_Draw_Glyph(*surf, *Drawer, *ShapePtr, frame + brightness_frame, frame + 2, Glyph_Frame(U'H') + 2, code, Point2D(x - ShapePtr->Get_Rect(frame + 2).X, y));
 		}
 		x += Char_Width(code) + 1;
 	}

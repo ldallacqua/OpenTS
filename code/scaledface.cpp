@@ -41,6 +41,7 @@ static FT_Face _Face = NULL;
 static std::vector<unsigned char> _FaceData;
 static float _CapitalShare = 0.7f;
 static int _Size = 0;
+static int _Width = 0;
 static std::unordered_map<std::uint64_t, ScaledGlyph> _Glyphs;
 
 
@@ -70,16 +71,17 @@ static bool Read_Face(std::string const & path)
 }
 
 
-static bool Set_Size(int size)
+static bool Set_Size(int size, int width)
 {
-	if (size == _Size) {
+	if (size == _Size && width == _Width) {
 		return(true);
 	}
-	if (FT_Set_Pixel_Sizes(_Face, 0, (FT_UInt)size) != 0) {
+	if (FT_Set_Pixel_Sizes(_Face, (FT_UInt)width, (FT_UInt)size) != 0) {
 		_Size = 0;
 		return(false);
 	}
 	_Size = size;
+	_Width = width;
 	return(true);
 }
 
@@ -126,7 +128,7 @@ bool Scaled_Face_Ready(void)
 		return(false);
 	}
 
-	if (Set_Size(MEASURE_SIZE) && FT_Load_Char(_Face, 'H', FT_LOAD_NO_BITMAP | FT_LOAD_NO_HINTING) == 0 && _Face->glyph->metrics.height > 0) {
+	if (Set_Size(MEASURE_SIZE, 0) && FT_Load_Char(_Face, 'H', FT_LOAD_NO_BITMAP | FT_LOAD_NO_HINTING) == 0 && _Face->glyph->metrics.height > 0) {
 		_CapitalShare = (float)_Face->glyph->metrics.height / 64.0f / (float)MEASURE_SIZE;
 	}
 	return(true);
@@ -141,21 +143,26 @@ int Scaled_Face_Size_For_Capital(int height)
 }
 
 
+/// <param name="width">The size that sets the character's width, for a face drawn wider or
+/// narrower than it is designed; 0 keeps the designed width.</param>
 /// <returns>The character drawn at the size, or NULL when there is no face or the character
 /// cannot be drawn. The glyph stays valid until the game exits.</returns>
-ScaledGlyph const * Scaled_Face_Glyph(char32_t code, int size)
+ScaledGlyph const * Scaled_Face_Glyph(char32_t code, int size, int width)
 {
-	if (!Scaled_Face_Ready() || size < 1) {
+	if (!Scaled_Face_Ready() || size < 1 || size > 0xFFFF || width < 0 || width > 0xFFFF || code > 0x10FFFF) {
 		return(NULL);
 	}
+	if (width == size) {
+		width = 0;
+	}
 
-	std::uint64_t key = ((std::uint64_t)size << 32) | (std::uint32_t)code;
+	std::uint64_t key = ((std::uint64_t)width << 48) | ((std::uint64_t)size << 32) | (std::uint32_t)code;
 	std::unordered_map<std::uint64_t, ScaledGlyph>::const_iterator found = _Glyphs.find(key);
 	if (found != _Glyphs.end()) {
 		return(&found->second);
 	}
 
-	if (!Set_Size(size) || FT_Load_Char(_Face, (FT_ULong)code, FT_LOAD_RENDER) != 0) {
+	if (!Set_Size(size, width) || FT_Load_Char(_Face, (FT_ULong)code, FT_LOAD_RENDER) != 0) {
 		return(NULL);
 	}
 

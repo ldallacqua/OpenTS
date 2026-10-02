@@ -25,10 +25,13 @@
 #include "wwfont.h"
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <cstring>
+#include <map>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 
@@ -36,6 +39,44 @@
 
 // The smallest size a line is drawn at when it has to shrink to fit the bitmap line's width.
 static const int SMALLEST_SIZE = 6;
+
+// How narrow and how wide a shape set's characters are drawn, in percent of the face's design.
+static const int NARROWEST_SHARE = 90;
+static const int WIDEST_SHARE = 115;
+
+// How narrow a character of a set without letters is drawn, to stay inside its bitmap cell.
+static const int NARROWEST_LONE_SHARE = 65;
+
+// The letters a shape set's widths are compared by with the scalable face's.
+static char const SAMPLE_LETTERS[] = "etaoinshrdlucmETAOINSHRDLUCM";
+
+// A pixel of a shape character counts as part of the letter, and not of its shadow or glow,
+// from this percentage of the character's brightest pixel.
+static const int LIT_SHARE = 40;
+
+// The pen position of a shape character whose word has not been laid out.
+static const int UNPLACED = INT_MIN;
+
+// What is known of a shape set's letters: the lit rows and columns of its capital H, from
+// the shape's own origin, and how far each of the sample letters it has moves the pen.
+struct ShapeFont
+{
+	Rect Frame;
+	int Top = 0;
+	int Rows = 0;
+	int Width = 0;
+	std::vector<std::pair<char32_t, int>> Cells;
+
+	// The one character measured in place of the H, for a set that has no H.
+	char32_t Lone = 0;
+
+	// The size, the width and the spacing between letters, in 64ths of a pixel, that the
+	// scalable face stands in with at one enlargement.
+	int FitScale = 0;
+	int FitSize = 0;
+	int FitWide = 0;
+	int FitSpacing = 0;
+};
 
 struct TextLine
 {
@@ -50,9 +91,19 @@ struct TextLine
 
 struct TextRecord
 {
+	// A character drawn from a shape set: where the drawn frame and the finished character
+	// stand, the letter's color in that frame, and the rows of the set's capital H.
 	char32_t GlyphCode = 0;
 	Rect GlyphRect;
-	std::vector<unsigned short> GlyphColors;
+	Rect Body;
+	unsigned short GlyphColor = 0;
+	int CapTop = 0;
+	int CapRows = 0;
+	ShapeFont * Font = nullptr;
+
+	// Where the pen stands for this character in the enlarged picture once its word is laid
+	// out.
+	int Pen = UNPLACED;
 	Rect Bounds;
 	Rect Clip;
 	std::vector<TextLine> Lines;
@@ -480,57 +531,172 @@ static void Draw_Line(TextCanvas const & canvas, char const * text, int size, in
 }
 
 
+/*
+ * Every character of a shape set is drawn at one size, with capitals as tall as the set's.
+ * The face is widened or narrowed until the sample letters are as wide on average as the
+ * set's, as far as the limits allow, and what is left over goes between the letters.
+ */
+static void Fit_Shape_Font(ShapeFont & font, int scale)
+{
+	if (font.FitScale == scale) {
+		return;
+	}
+	font.FitScale = scale;
+	font.FitSize = Scaled_Face_Size_For_Capital(font.Rows * scale);
+	font.FitWide = font.FitSize;
+	font.FitSpacing = 0;
+
+	if (font.Lone != 0) {
+		ScaledGlyph const * glyph = Scaled_Face_Glyph(font.Lone, font.FitSize);
+		if (glyph != nullptr && glyph->Width > 0) {
+			// One bitmap pixel narrower than the bitmap character, which fills its cell.
+			int room = std::max(font.Width - 1, 1) * scale;
+			font.FitWide = std::clamp(font.FitSize * room / glyph->Width, font.FitSize * NARROWEST_LONE_SHARE / 100, font.FitSize * WIDEST_SHARE / 100);
+		}
+		return;
+	}
+
+	long long cells = 0;
+	long long designed = 0;
+	for (std::pair<char32_t, int> const & cell : font.Cells) {
+		ScaledGlyph const * glyph = Scaled_Face_Glyph(cell.first, font.FitSize);
+		if (glyph != nullptr) {
+			cells += (long long)cell.second * scale * 64;
+			designed += glyph->Advance;
+		}
+	}
+	if (designed <= 0) {
+		return;
+	}
+	font.FitWide = std::clamp((int)(font.FitSize * cells / designed), font.FitSize * NARROWEST_SHARE / 100, font.FitSize * WIDEST_SHARE / 100);
+
+	long long fitted = 0;
+	int count = 0;
+	cells = 0;
+	for (std::pair<char32_t, int> const & cell : font.Cells) {
+		ScaledGlyph const * glyph = Scaled_Face_Glyph(cell.first, font.FitSize, font.FitWide);
+		if (glyph != nullptr) {
+			cells += (long long)cell.second * scale * 64;
+			fitted += glyph->Advance;
+			count++;
+		}
+	}
+	if (count > 0) {
+		font.FitSpacing = (int)((cells - fitted) / count);
+	}
+}
+
+
+static ScaledGlyph const * Shape_Glyph(TextRecord const & record, int scale, char32_t code)
+{
+	if (record.Font == nullptr || record.Font->Rows <= 0) {
+		return(nullptr);
+	}
+	Fit_Shape_Font(*record.Font, scale);
+	return(Scaled_Face_Glyph(code, record.Font->FitSize, record.Font->FitWide));
+}
+
+
+static bool Same_Line(TextRecord const & one, TextRecord const & other)
+{
+	return(other.GlyphCode != 0 && one.Font == other.Font && one.CapTop == other.CapTop);
+}
+
+
+/*
+ * A shape set's characters stand in cells as wide as the bitmap letters, which the scalable
+ * face's letters do not fill evenly. A word, a run of cells that touch, is laid out again
+ * from the left edge of its first cell with the face's own spacing, so a letter stays in
+ * place while more are typed after it.
+ */
+static void Place_Shape_Words(std::vector<TextRecord> & records, int scale)
+{
+	for (TextRecord & record : records) {
+		record.Pen = UNPLACED;
+		if (record.GlyphCode == 0 || record.Font == nullptr || record.Font->Cells.empty()) {
+			continue;
+		}
+		Fit_Shape_Font(*record.Font, scale);
+		int spacing = record.Font->FitSpacing;
+
+		// Walk back through the cells that touch, to the first of the word.
+		TextRecord const * first = &record;
+		int travelled = 0;
+		for (int steps = 0; steps < 256; steps++) {
+			TextRecord const * before = nullptr;
+			for (TextRecord const & other : records) {
+				if (&other != first && Same_Line(*first, other) && other.Body.X + other.Body.Width + 1 == first->Body.X) {
+					before = &other;
+					break;
+				}
+			}
+			ScaledGlyph const * glyph = (before != nullptr) ? Shape_Glyph(*before, scale, before->GlyphCode) : nullptr;
+			if (glyph == nullptr) {
+				break;
+			}
+			travelled += glyph->Advance + spacing;
+			first = before;
+		}
+
+		ScaledGlyph const * opening = Shape_Glyph(*first, scale, first->GlyphCode);
+		if (opening != nullptr) {
+			record.Pen = first->Body.X * scale - opening->Left + ((travelled + 32) >> 6);
+		}
+	}
+}
+
+
 static void Draw_Shape_Record(TextCanvas const & canvas, TextRecord const & record, Rect const & sourcerect, Point2D const & destorigin, int scale)
 {
-	int first = 0;
-	int last = (int)record.GlyphColors.size() - 1;
-	while (first <= last && record.GlyphColors[first] == 0) first++;
-	while (last >= first && record.GlyphColors[last] == 0) last--;
-	if (first > last) return;
+	if (record.CapRows <= 0) {
+		return;
+	}
 
-	int height = (last - first + 1) * scale;
-	ScaledGlyph const * glyph = Scaled_Face_Glyph(record.GlyphCode, Scaled_Face_Size_For_Capital(height));
-	if (glyph == nullptr || glyph->Width <= 0 || glyph->Height <= 0) return;
-	int width = std::max((record.GlyphRect.Width - 1) * scale, 1);
-	int left = destorigin.X + (record.GlyphRect.X - sourcerect.X) * scale;
-	int top = destorigin.Y + (record.GlyphRect.Y + first - sourcerect.Y) * scale;
+	ScaledGlyph const * glyph = Shape_Glyph(record, scale, record.GlyphCode);
+	if (glyph == nullptr || glyph->Width <= 0 || glyph->Height <= 0) {
+		return;
+	}
+
+	int left = destorigin.X - sourcerect.X * scale;
+	if (record.Pen != UNPLACED) {
+		left += record.Pen + glyph->Left;
+	} else {
+		left += record.Body.X * scale + (record.Body.Width * scale - glyph->Width) / 2;
+	}
+	int top = destorigin.Y + (record.CapTop + record.CapRows - sourcerect.Y) * scale - glyph->Top;
+	unsigned short color = record.GlyphColor;
 	int edge = std::max(scale / 3, 1);
-	Rect area = Intersect(canvas.Clip, Rect(left - edge, top - edge, width + edge * 2, height + edge * 2));
+	Rect area = Intersect(canvas.Clip, Rect(left - edge, top - edge, glyph->Width + edge * 2, glyph->Height + edge * 2));
 
-	auto coverage = [glyph, width, height](int x, int y) -> int {
-		if (x < 0 || y < 0 || x >= width || y >= height) return 0;
-		float sx = (x + 0.5f) * glyph->Width / width - 0.5f;
-		float sy = (y + 0.5f) * glyph->Height / height - 0.5f;
-		int x0 = (int)std::floor(sx);
-		int y0 = (int)std::floor(sy);
-		float fx = sx - x0;
-		float fy = sy - y0;
-		auto at = [glyph](int gx, int gy) -> int {
-			if (gx < 0 || gy < 0 || gx >= glyph->Width || gy >= glyph->Height) return 0;
-			return glyph->Coverage[(std::size_t)gy * glyph->Width + gx];
-		};
-		return (int)((at(x0, y0) * (1 - fx) + at(x0 + 1, y0) * fx) * (1 - fy) + (at(x0, y0 + 1) * (1 - fx) + at(x0 + 1, y0 + 1) * fx) * fy);
+	auto coverage = [glyph](int x, int y) -> int {
+		if (x < 0 || y < 0 || x >= glyph->Width || y >= glyph->Height) {
+			return(0);
+		}
+		return(glyph->Coverage[(std::size_t)y * glyph->Width + x]);
 	};
 
 	for (int y = area.Y; y < area.Y + area.Height; y++) {
 		unsigned short * out = (unsigned short *)(canvas.Buffer + (std::ptrdiff_t)y * canvas.Stride);
 		for (int x = area.X; x < area.X + area.Width; x++) {
-			if (record.IsCovered && Is_Blocked(canvas, x, y)) continue;
+			if (record.IsCovered && Is_Blocked(canvas, x, y)) {
+				continue;
+			}
+
 			int alpha = coverage(x - left, y - top);
 			int outline = alpha;
-			for (int dy = -edge; dy <= edge; dy++) {
-				for (int dx = -edge; dx <= edge; dx++) {
-					outline = std::max(outline, coverage(x - left + dx, y - top + dy));
+			for (int down = -edge; down <= edge; down++) {
+				for (int across = -edge; across <= edge; across++) {
+					outline = std::max(outline, coverage(x - left + across, y - top + down));
 				}
 			}
+			if (outline == 0) {
+				continue;
+			}
+
 			int under = out[x];
-			int red = (under >> 11) * (255 - outline) / 255;
-			int green = ((under >> 5) & 63) * (255 - outline) / 255;
-			int blue = (under & 31) * (255 - outline) / 255;
-			unsigned short color = record.GlyphColors[std::clamp((y - top) / scale + first, first, last)];
-			red += (color >> 11) * alpha / 255;
-			green += ((color >> 5) & 63) * alpha / 255;
-			blue += (color & 31) * alpha / 255;
+			int red = (under >> 11) * (255 - outline) / 255 + (color >> 11) * alpha / 255;
+			int green = ((under >> 5) & 63) * (255 - outline) / 255 + ((color >> 5) & 63) * alpha / 255;
+			int blue = (under & 31) * (255 - outline) / 255 + (color & 31) * alpha / 255;
 			out[x] = (unsigned short)((red << 11) | (green << 5) | blue);
 		}
 	}
@@ -767,6 +933,9 @@ void Sharp_Text_Copy(Surface const & source, Rect const & sourcerect, Surface & 
 			record.Clip.Y += dy;
 			record.GlyphRect.X += dx;
 			record.GlyphRect.Y += dy;
+			record.Body.X += dx;
+			record.Body.Y += dy;
+			record.CapTop += dy;
 			for (TextLine & line : record.Lines) {
 				line.X += dx;
 				line.Y += dy;
@@ -787,8 +956,95 @@ void Sharp_Text_Copy(Surface const & source, Rect const & sourcerect, Surface & 
 }
 
 
-/// <summary>Records a score glyph, including the bounds of its fade frames.</summary>
-void Sharp_Text_Draw_Glyph(Surface & surface, ConvertClass & converter, ShapeSet const & shapes, int frame, int finalframe, char32_t code, Point2D const & point)
+static int Light_Of(unsigned short color)
+{
+	return((color >> 11) * 2 + ((color >> 5) & 63) * 3 + (color & 31));
+}
+
+
+static bool Sample_Frame(ConvertClass & converter, ShapeSet const & shapes, int frame, std::vector<unsigned short> & colors, Rect & rect)
+{
+	rect = shapes.Get_Rect(frame);
+	if (rect.Width <= 0 || rect.Height <= 0) {
+		return(false);
+	}
+
+	bool printing = _Printing;
+	_Printing = true;
+	DSurface sample(rect.Width, rect.Height);
+	sample.Fill(0);
+	Draw_Shape(sample, converter, &shapes, frame, Point2D(-rect.X, -rect.Y), sample.Get_Rect(), SHAPE_WIN_REL);
+	bool sampled = Copy_Out(sample, sample.Get_Rect(), colors);
+	_Printing = printing;
+	return(sampled);
+}
+
+
+static std::map<std::pair<ShapeSet const *, int>, ShapeFont> _ShapeFonts;
+
+
+// A set's characters are in code order, three frames each, so the frame of its H leads to
+// the frames of the other letters.
+static ShapeFont & Shape_Font_Of(ConvertClass & converter, ShapeSet const & shapes, int frame, bool letters)
+{
+	Rect rect = shapes.Get_Rect(frame);
+	std::pair<ShapeSet const *, int> key(&shapes, frame);
+	std::map<std::pair<ShapeSet const *, int>, ShapeFont>::iterator found = _ShapeFonts.find(key);
+	if (found != _ShapeFonts.end() && found->second.Frame == rect) {
+		return(found->second);
+	}
+
+	ShapeFont font;
+	font.Frame = rect;
+	std::vector<unsigned short> colors;
+	if (Sample_Frame(converter, shapes, frame, colors, rect)) {
+		int brightest = 0;
+		for (unsigned short color : colors) {
+			brightest = std::max(brightest, Light_Of(color));
+		}
+
+		int top = rect.Height;
+		int bottom = -1;
+		int left = rect.Width;
+		int right = -1;
+		for (int y = 0; y < rect.Height; y++) {
+			for (int x = 0; x < rect.Width; x++) {
+				if (brightest > 0 && Light_Of(colors[(std::size_t)y * rect.Width + x]) * 100 >= brightest * LIT_SHARE) {
+					top = std::min(top, y);
+					bottom = std::max(bottom, y);
+					left = std::min(left, x);
+					right = std::max(right, x);
+				}
+			}
+		}
+		if (bottom >= top) {
+			font.Top = rect.Y + top;
+			font.Rows = bottom - top + 1;
+			font.Width = right - left + 1;
+		}
+	}
+
+	if (letters && font.Rows > 0) {
+		for (char const * letter = SAMPLE_LETTERS; *letter != '\0'; letter++) {
+			int other = frame + 3 * (*letter - 'H');
+			if (other >= 0 && other < shapes.Get_Count() && shapes.Get_Rect(other).Width > 0) {
+				font.Cells.push_back(std::pair<char32_t, int>((char32_t)*letter, shapes.Get_Rect(other).Width + 1));
+			}
+		}
+	}
+
+	_ShapeFonts[key] = font;
+	return(_ShapeFonts[key]);
+}
+
+
+/// <summary>
+/// Draws one frame of a character from a shape set and remembers it, so the character is
+/// drawn in the scalable face when the surface is enlarged.
+/// </summary>
+/// <param name="finalframe">The last of the character's three fade frames.</param>
+/// <param name="capitalframe">The last fade frame of the set's capital H.</param>
+void Sharp_Text_Draw_Glyph(Surface & surface, ConvertClass & converter, ShapeSet const & shapes, int frame, int finalframe, int capitalframe, char32_t code, Point2D const & point)
 {
 	Rect glyphrect = shapes.Get_Rect(frame);
 	glyphrect.X += point.X;
@@ -807,6 +1063,9 @@ void Sharp_Text_Draw_Glyph(Surface & surface, ConvertClass & converter, ShapeSet
 		record.Bounds = bounds;
 		record.Clip = surface.Get_Rect();
 		record.GlyphRect = glyphrect;
+		record.Body = shapes.Get_Rect(finalframe);
+		record.Body.X += point.X;
+		record.Body.Y += point.Y;
 		record.GlyphCode = code;
 		record.IsHidden = false;
 		record.IsCovered = false;
@@ -847,29 +1106,36 @@ void Sharp_Text_Draw_Glyph(Surface & surface, ConvertClass & converter, ShapeSet
 		}
 	}
 
-	_Printing = true;
-	DSurface sample(glyphrect.Width, glyphrect.Height);
-	sample.Fill(0);
-	Rect rect = shapes.Get_Rect(frame);
-	Draw_Shape(sample, converter, &shapes, frame, Point2D(-rect.X, -rect.Y), sample.Get_Rect(), SHAPE_WIN_REL);
+	// A set without an H, such as one of figures alone, is measured by the character itself.
+	ShapeFont * font = &Shape_Font_Of(converter, shapes, capitalframe, true);
+	bool lettered = font->Rows > 0;
+	if (!lettered) {
+		font = &Shape_Font_Of(converter, shapes, finalframe, false);
+		font->Lone = code;
+	}
+
+	// The bitmap letters are one color with softened edges, and a thin character may hold
+	// edge pixels only, so the color is read from the set's H in the same fade frame.
 	std::vector<unsigned short> colors;
-	bool sampled = Copy_Out(sample, sample.Get_Rect(), colors);
-	_Printing = false;
-	if (!sampled) {
+	Rect rect;
+	if (font->Rows <= 0 || !Sample_Frame(converter, shapes, lettered ? capitalframe - (finalframe - frame) : frame, colors, rect)) {
 		return;
 	}
-	record.GlyphColors.resize(glyphrect.Height);
-	for (int y = 0; y < glyphrect.Height; y++) {
-		int brightest = 0;
-		for (int x = 0; x < glyphrect.Width; x++) {
-			unsigned short color = colors[(std::size_t)y * glyphrect.Width + x];
-			int light = (color >> 11) * 2 + ((color >> 5) & 63) * 3 + (color & 31);
-			if (light > brightest) {
-				brightest = light;
-				record.GlyphColors[y] = color;
-			}
+	record.Font = font;
+	record.CapTop = point.Y + font->Top;
+	record.CapRows = font->Rows;
+
+	int brightest = 0;
+	for (unsigned short color : colors) {
+		if (Light_Of(color) > brightest) {
+			brightest = Light_Of(color);
+			record.GlyphColor = color;
 		}
 	}
+	if (brightest == 0) {
+		return;
+	}
+
 	Records_For(surface)->push_back(std::move(record));
 }
 
@@ -904,6 +1170,7 @@ bool Sharp_Text_Menu_Frame(Surface & source, std::vector<unsigned short> & pixel
 	}
 	source.Unlock();
 	auto & records = *Records_For(source);
+	Place_Shape_Words(records, scale);
 	for (TextRecord & record : records) {
 		if (record.IsHidden) {
 			Copy_In(source, record.Bounds, record.Held);

@@ -34,5 +34,5 @@ struct ScaledGlyph
 
 bool Scaled_Face_Ready(void);
 int Scaled_Face_Size_For_Capital(int height);
-ScaledGlyph const * Scaled_Face_Glyph(char32_t code, int size);
+ScaledGlyph const * Scaled_Face_Glyph(char32_t code, int size, int width = 0);
 int Scaled_Face_String_Width(char const * text, int size);

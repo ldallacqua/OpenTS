@@ -358,7 +358,7 @@ void MSFont::Draw_Character(Surface * surface, char32_t code, int x, int y, int 
 			}
 		}
 
-		Sharp_Text_Draw_Glyph(*surface, *Drawer, *FontFile, shape_frame + frame, shape_frame + 2, code, Point2D(x - FontFile->Get_Rect(shape_frame + 2).X, y));
+		Sharp_Text_Draw_Glyph(*surface, *Drawer, *FontFile, shape_frame + frame, shape_frame + 2, Glyph_Frame(U'H') + 2, code, Point2D(x - FontFile->Get_Rect(shape_frame + 2).X, y));
 	}
 }
 
@@ -383,7 +383,7 @@ void MSFont::Draw_String(Surface * surface, char const * string, int x, int y, i
 			if (code > ' ') {
 				int shape_frame = Glyph_Frame(code);
 
-				Sharp_Text_Draw_Glyph(*surface, *Drawer, *FontFile, shape_frame + frame, shape_frame + 2, code, Point2D(current_x - FontFile->Get_Rect(shape_frame + 2).X, y));
+				Sharp_Text_Draw_Glyph(*surface, *Drawer, *FontFile, shape_frame + frame, shape_frame + 2, Glyph_Frame(U'H') + 2, code, Point2D(current_x - FontFile->Get_Rect(shape_frame + 2).X, y));
 			}
 
 			current_x += Get_Character_Width(code);
