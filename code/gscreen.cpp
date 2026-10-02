@@ -62,6 +62,7 @@
 #include "keyboard.h"
 #include "savestream.h"
 #include "session.h"
+#include "sharptext.h"
 #include "surface.h"
 #include "tactical.h"
 #include "video.h"
@@ -705,7 +706,13 @@ void Update_Visible_Surface(Surface *surface, Rect *rect)
 		src_rect = Intersect(src_rect, surface->Get_Rect());
 
 		// A scripted zoom changes the size again, by an amount only a stretch can follow.
-		if (!same_size || !src_rect.Is_Valid() || !Blit_Enlarged(clip, enlarged.Top_Left(), *surface, src_rect, zoom)) {
+		bool whole = same_size && src_rect.Is_Valid();
+		if (whole) {
+			Sharp_Text_Hide(*surface, src_rect);
+			whole = Blit_Enlarged(clip, enlarged.Top_Left(), *surface, src_rect, zoom);
+			Sharp_Text_Show(*surface, src_rect, *VisibleSurface, clip, enlarged.Top_Left(), zoom, whole);
+		}
+		if (!whole) {
 			VisibleSurface->Blit_From(clip, enlarged, *surface, surface->Get_Rect(), src_rect, false, true);
 		}
 	}

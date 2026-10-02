@@ -119,6 +119,7 @@ OptionsClass::OptionsClass(void) :
 	ScoreVolume(.5f),
 	BitmapSystemFont(true),
 	BitmapDialogFont(true),
+	BitmapGameFont(true),
 	AutoScroll(true),
 	IsScoreRepeat(false),
 	IsScoreShuffle(false),
@@ -395,6 +396,9 @@ void OptionsClass::Load_Settings(void)
 	BitmapDialogFont = ConfigINI.Get_Bool("Options", "BitmapDialogFont", BitmapDialogFont);
 	DebugString("BitmapDialogFont is %s\n", BitmapDialogFont == true ? "ON" : "OFF");
 
+	BitmapGameFont = ConfigINI.Get_Bool("Options", "BitmapGameFont", BitmapGameFont);
+	DebugString("BitmapGameFont is %s\n", BitmapGameFont == true ? "ON" : "OFF");
+
 	DetailLevel = ConfigINI.Get_Int("Options", "DetailLevel", DetailLevel);
 	DetailLevel = std::min(DetailLevel, 2);
 	DetailLevel = std::max(DetailLevel, 0);
@@ -497,6 +501,7 @@ void OptionsClass::Save_Settings (void)
 	ConfigINI.Put_Bool("Options", "AutoScroll", AutoScroll);
 	ConfigINI.Put_Bool("Options", "BitmapSystemFont", BitmapSystemFont);
 	ConfigINI.Put_Bool("Options", "BitmapDialogFont", BitmapDialogFont);
+	ConfigINI.Put_Bool("Options", "BitmapGameFont", BitmapGameFont);
 	ConfigINI.Put_Int("Options", "DetailLevel", DetailLevel);
 	ConfigINI.Put_Bool("Options", "SidebarCameoText", SidebarCameoText);
 	ConfigINI.Put_Bool("Options", "SidebarSorting", SidebarSorting);

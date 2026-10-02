@@ -113,6 +113,7 @@
 #include "scheme.h"
 #include "session.h"
 #include "shapeset.h"
+#include "sharptext.h"
 #include "super.h"
 #include "suprtype.h"
 #include "surface.h"
@@ -1052,7 +1053,11 @@ static void Blit_Sidebar_Rect(Rect const & rect)
 		}
 	}
 
-	VisibleSurface->Blit_From(Rect(left + source.X * scale, source.Y * scale, source.Width * scale, source.Height * scale), *SidebarSurface, source, false, true);
+	Rect dest(left + source.X * scale, source.Y * scale, source.Width * scale, source.Height * scale);
+
+	Sharp_Text_Hide(*SidebarSurface, source);
+	bool copied = VisibleSurface->Blit_From(dest, *SidebarSurface, source, false, true);
+	Sharp_Text_Show(*SidebarSurface, source, *VisibleSurface, dest, dest.Top_Left(), scale, copied && scale > 1);
 }
 
 
@@ -2043,6 +2048,12 @@ void SidebarClass::StripClass::Draw_It(bool complete)
 				}
 			}
 
+			// The scalable face cannot be drawn under the clock, so the clock goes under the text.
+			bool clockfirst = Sharp_Text_Wanted(*SidebarSurface);
+			if (clockfirst && production && !completed) {
+				Draw_Shape(*SidebarSurface, *SidebarDrawer, isready ? RechargeClockShapes : ClockShapes, stage + 1, Point2D(x, y), cliprect, ShapeFlags_Type(SHAPE_WIN_REL|SHAPE_TRANSLUCENT50));
+			}
+
 			if (name != NULL) {
 				Print_Cameo_Text(name, Point2D(x, y + CAMEO_TEXT_Y_OFFSET), cliprect, OBJECT_WIDTH-2);
 			}
@@ -2075,7 +2086,9 @@ void SidebarClass::StripClass::Draw_It(bool complete)
 
 				if (!completed) {
 
-					if (!isready) {
+					if (clockfirst) {
+						// Already drawn.
+					} else if (!isready) {
 						Draw_Shape(*SidebarSurface, *SidebarDrawer, ClockShapes, stage + 1, Point2D(x, y), cliprect, ShapeFlags_Type(SHAPE_WIN_REL|SHAPE_TRANSLUCENT50));
 					} else {
 						Draw_Shape(*SidebarSurface, *SidebarDrawer, RechargeClockShapes, stage + 1, Point2D(x, y), cliprect, ShapeFlags_Type(SHAPE_WIN_REL|SHAPE_TRANSLUCENT50));

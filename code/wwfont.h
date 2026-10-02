@@ -70,6 +70,25 @@ class WWFontClass : public FontClass
 		virtual int Set_XSpacing(int x) override;
 		virtual int Set_YSpacing(int y) override;
 
+		// What the font's letters look like, measured on its capital H.
+		struct LetterShape {
+
+			// The first and last rows of the cell, and the first column, that the letter
+			// itself occupies. Shadow and outline pixels are not counted.
+			int Top;
+			int Bottom;
+			int Left;
+
+			// The pixel value most of the letter is drawn in.
+			int Value;
+
+			// Whether the font's art holds drop shadow pixels and outline pixels.
+			bool HasDrop;
+			bool HasEdge;
+		};
+		bool Letter_Shape(LetterShape & shape) const;
+		int Line_Advance(void) const;
+
 	private:
 
 		/*

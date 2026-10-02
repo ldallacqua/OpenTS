@@ -221,6 +221,7 @@ target_link_libraries(OpenTS PRIVATE
     bimg
     miniaudio
     lzo
+    freetype
     RmlUi::Core
     imgui
     SDL3::SDL3-static

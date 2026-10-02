@@ -48,6 +48,7 @@
 #include "convert.h"
 
 #include "dbgprint.h"
+#include "sharptext.h"
 #include "utf8.h"
 
 #include <algorithm>
@@ -441,6 +442,10 @@ Point2D WWFontClass::Print(char const * string, Surface & surface, Rect const & 
 {
 	if (string == NULL) return(drawpoint);
 
+	if (Sharp_Text_Wanted(surface)) {
+		return(Sharp_Text_Print(*this, string, surface, cliprect, drawpoint, convertref, remap));
+	}
+
 	/*
 	**	Compute the surface relative coordinate for the print position.
 	*/
@@ -691,4 +696,72 @@ Point2D WWFontClass::Print(char const * string, Surface & surface, Rect const & 
 		surface.Unlock();
 	}
 	return(point);
+}
+
+/// <returns>How far down a line break moves the print position.</returns>
+int WWFontClass::Line_Advance(void) const
+{
+	int yspacing = FontYSpacing + Raw_Width()/FUDGEDIV;
+	return(Raw_Height() + ((yspacing > 0) ? yspacing : 0));
+}
+
+
+/// <returns>bool; Does the font hold a capital H with at least one pixel that is not shadow
+/// or outline? The shape is only filled in when it does.</returns>
+bool WWFontClass::Letter_Shape(LetterShape & shape) const
+{
+	shape = LetterShape();
+
+	unsigned char c = Glyph_Index(U'H');
+	if (c != 'H') {
+		return(false);
+	}
+
+	unsigned char const * fontwidth = ((unsigned char const *)FontData) + FontData->WidthBlockOffset;
+	unsigned short const * fontheight = (unsigned short const *)(((unsigned char const *)FontData) + FontData->HeightOffset);
+	unsigned short const * fontoffset = (unsigned short const *)(((unsigned char const *)FontData) + FontData->OffsetBlockOffset);
+
+	int width = fontwidth[c];
+	int rows = fontheight[c] >> 8;
+	int firstrow = fontheight[c] & 0xFF;
+
+	// The old style of font packs two pixels to a byte.
+	bool packed = FontData->FontCompress != 2;
+	unsigned char const * data = ((unsigned char const *)FontData) + fontoffset[c] + (packed ? 0 : FontData->DataBlockOffset);
+
+	int counts[16] = {};
+	shape.Top = -1;
+	shape.Left = width;
+
+	for (int row = 0; row < rows; row++) {
+		for (int column = 0; column < width; column++) {
+			int value;
+			if (packed) {
+				unsigned char pair = data[row * ((width + 1) / 2) + column / 2];
+				value = (column & 1) ? (pair >> 4) : (pair & 0x0F);
+			} else {
+				value = data[row * width + column];
+			}
+
+			if (value == 2) {
+				shape.HasDrop = true;
+			} else if (value == 3) {
+				shape.HasEdge = true;
+			} else if (value != 0 && value < 16) {
+				counts[value]++;
+				if (shape.Top < 0) {
+					shape.Top = firstrow + row;
+				}
+				shape.Bottom = firstrow + row;
+				shape.Left = std::min(shape.Left, column);
+			}
+		}
+	}
+
+	if (shape.Top < 0) {
+		return(false);
+	}
+
+	shape.Value = (int)(std::max_element(counts, counts + 16) - counts);
+	return(true);
 }

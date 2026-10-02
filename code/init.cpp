@@ -164,6 +164,7 @@
 #include "script.h"
 #include "sdl/sdlwindow.h"
 #include "session.h"
+#include "sharptext.h"
 #include "side.h"
 #include "skirmish.h"
 #include "smudtype.h"
@@ -5619,6 +5620,7 @@ bool Allocate_Surfaces(const Rect & hidden_rect, const Rect & composite_rect, co
 	bool success = true;
 
 	DebugString("Allocating new surfaces\n");
+	Sharp_Text_Forget();
 
 	if (AlternateSurface != NULL) {
 		DebugString("Deleting AlternateSurface\n");

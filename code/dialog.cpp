@@ -54,6 +54,7 @@
 #include "gadget.h"
 #include "lightcon.h"
 #include "scheme.h"
+#include "sharptext.h"
 #include "surface.h"
 #include "utf8.h"
 #include "vector.h"
@@ -384,7 +385,9 @@ Point2D Simple_Text_Print(char const * text, Surface & surface, Rect const & rec
 
 		fontpalette[fore] = forecolor;
 		fontpalette[TBLACK] = back;
+		Sharp_Text_Set_Alignment((flag & TPF_CENTER) ? SHARP_TEXT_CENTER : (flag & TPF_RIGHT) ? SHARP_TEXT_RIGHT : SHARP_TEXT_LEFT);
 		_point = font->Print(text, surface, rect, _point, *scheme->Converter, fontpalette);
+		Sharp_Text_Set_Alignment(SHARP_TEXT_LEFT);
 	}
 	return(_point);
 }

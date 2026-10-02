@@ -261,6 +261,7 @@ class OptionsClass {
 
 		bool BitmapSystemFont;
 		bool BitmapDialogFont;
+		bool BitmapGameFont;
 
 	private:
 
