@@ -23,6 +23,8 @@
 #include "dsurface.h"
 #include "globals.h"
 #include "goptions.h"
+#include "interfacescale.h"
+#include "menubars.h"
 #include "misc.h"
 #include "sdl/sdlwindow.h"
 #include "sharptext.h"
@@ -33,6 +35,7 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <utility>
 #include <vector>
 
@@ -340,6 +343,16 @@ static void Present(void)
 		pixels = menu.data();
 		width = _ScaleInfo.DestWidth;
 		height = _ScaleInfo.DestHeight;
+		pitch = width * 2;
+	} else if (snapshot.Upload && Frame_Scale() > 1 && surface->Bytes_Per_Pixel() == 2 && Menu_Bars_Wanted(width, height)) {
+
+		// The bars are not part of the game's frame, so they go on a copy of it.
+		menu.resize((std::size_t)width * height);
+		for (int row = 0; row < height; row++) {
+			std::memcpy(menu.data() + (std::size_t)row * width, (unsigned char const *)pixels + (std::ptrdiff_t)row * pitch, (std::size_t)width * 2);
+		}
+		Menu_Bars_Draw((unsigned short const *)pixels, width, height, pitch, menu.data(), width, height);
+		pixels = menu.data();
 		pitch = width * 2;
 	}
 	if (snapshot.Upload && !Backend_Set_Frame_Size(width, height)) {

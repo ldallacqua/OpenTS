@@ -18,6 +18,7 @@
 #include "globals.h"
 #include "goptions.h"
 #include "interfacescale.h"
+#include "menubars.h"
 #include "scaledface.h"
 #include "shapeset.h"
 #include "surface.h"
@@ -1242,6 +1243,9 @@ bool Sharp_Text_Menu_Frame(Surface & source, std::vector<unsigned short> & pixel
 			widen(down[y], out);
 		}
 	}
+
+	// The letters are off the surface here, so the bars do not mirror them.
+	Menu_Bars_Draw((unsigned short const *)from, columns, rows, source.Stride(), pixels.data(), width, height);
 	source.Unlock();
 
 	float scale = (float)height / (float)rows;
