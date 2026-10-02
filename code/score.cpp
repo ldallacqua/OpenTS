@@ -314,6 +314,11 @@ void ScoreClass::Presentation(void)
 		Draw_Shape(*HiddenSurface, *Drawer, casu02shape, i, Point2D(XPos + 186, YPos + 254), HiddenSurface->Get_Rect(), SHAPE_WIN_REL);
 		Call_Back_Delay(4);
 	}
+
+	// The lower emblem's last frame has the sides' names painted into it.
+	Sharp_Text_Mark_Lettering(*HiddenSurface, Rect(XPos + 228, YPos + 264, 72, 35), "GDI", SCALED_FACE_HEAVY);
+	Sharp_Text_Mark_Lettering(*HiddenSurface, Rect(XPos + 334, YPos + 264, 86, 35), "NOD", SCALED_FACE_HEAVY);
+
 	rect.Set(XPos + 186, YPos + 54, 262, 326);
 	SurfacePtr->Blit_From(rect, *HiddenSurface, rect);
 	AlternateSurface->Blit_From(rect, *HiddenSurface, rect);

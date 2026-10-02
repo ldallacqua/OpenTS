@@ -35,6 +35,9 @@ static char const * const SHIPPED_FACE = "ui\\Arimo.ttf";
 // The title face is only ever the one shipped with the game.
 static char const * const TITLE_FACE = "ui\\texgyreadventor-bold.otf";
 
+// The heavy face is only ever the one in the Windows font folder.
+static char const * const HEAVY_FACE = "arialbd.ttf";
+
 // The size the capital is measured at, large enough that rounding does not show.
 static const int MEASURE_SIZE = 256;
 
@@ -141,6 +144,13 @@ bool Scaled_Face_Ready(ScaledFaceType which)
 
 	char directory[MAX_PATH];
 	unsigned int length = GetWindowsDirectoryA(directory, MAX_PATH);
+	if (which == SCALED_FACE_HEAVY) {
+		if (length == 0 || length >= MAX_PATH || !Read_Face(face, std::string(directory) + "\\Fonts\\" + HEAVY_FACE)) {
+			DebugString("Scaled face: the heavy face could not be read\n");
+		}
+		return(face.Face != NULL);
+	}
+
 	if (length > 0 && length < MAX_PATH) {
 		for (char const * const name : SYSTEM_FACES) {
 			if (Read_Face(face, std::string(directory) + "\\Fonts\\" + name)) {

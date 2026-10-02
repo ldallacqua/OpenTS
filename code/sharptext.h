@@ -10,6 +10,7 @@
 #pragma once
 
 #include "rect.h"
+#include "scaledface.h"
 
 #include <vector>
 
@@ -38,4 +39,5 @@ void Sharp_Text_Forget(Surface const & surface);
 void Sharp_Text_Copy(Surface const & source, Rect const & sourcerect, Surface & dest, Rect const & destrect);
 void Sharp_Text_Draw_Glyph(Surface & surface, ConvertClass & converter, ShapeSet const & shapes, int frame, int finalframe, int capitalframe, char32_t code, Point2D const & point);
 void Sharp_Text_Draw_Picture(Surface & surface, Rect const & area, Surface const & picture, char const * text);
+void Sharp_Text_Mark_Lettering(Surface & surface, Rect const & area, char const * text, ScaledFaceType face);
 bool Sharp_Text_Menu_Frame(Surface & source, std::vector<unsigned short> & pixels, int width, int height);

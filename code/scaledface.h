@@ -32,11 +32,12 @@ struct ScaledGlyph
 };
 
 
-// The faces text is drawn in: the one of dialogs, labels and messages, and the geometric one
-// the menu pictures are lettered in.
+// The faces text is drawn in: the one of dialogs, labels and messages, the geometric one the
+// menu pictures are lettered in, and the heavy one of the score screen's side names.
 enum ScaledFaceType {
 	SCALED_FACE_TEXT,
 	SCALED_FACE_TITLE,
+	SCALED_FACE_HEAVY,
 
 	SCALED_FACE_COUNT
 };
